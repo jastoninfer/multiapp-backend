@@ -1,0 +1,6 @@
+package com.example.multiapp.audit.model;
+
+public enum AuditEntityType {
+    TICKET, APPOINTMENT, COMMENT, ATTACHMENT, USER, TENANT, MEMBERSHIP, CONTACT,
+    CONTACT_CLAIM, RESOURCE_BLOCK, RESOURCE_WORKING_HOURS;
+}

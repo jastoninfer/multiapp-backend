@@ -1,0 +1,4 @@
+- 开发
+  - `docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.dev.yml up -d`
+- 生产
+  - `docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d`

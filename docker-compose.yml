@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: multiapp-postgres
+    environment:
+      POSTGRES_DB: ${APP_DB}
+      POSTGRES_USER: ${APP_DB_USER}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: multiapp-keycloak
+    depends_on:
+      - postgres
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${APP_DB}
+      KC_DB_USERNAME: ${APP_DB_USER}
+      KC_DB_PASSWORD: ${APP_DB_PASSWORD}
+
+volumes:
+  pgdata: {}

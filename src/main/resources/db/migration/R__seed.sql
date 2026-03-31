@@ -1,0 +1,22 @@
+-- R__seed.sql
+
+-- tenants
+insert into app.tenant (id, name, status)
+values
+    ('00000000-0000-0000-0000-000000000001', 'Acme', 'ACTIVE'),
+    ('00000000-0000-0000-0000-000000000002', 'platform_admin', 'ACTIVE')
+    on conflict (id) do nothing;
+
+-- users
+insert into app.app_user (id, issuer, keycloak_sub, email, display_name, status)
+values
+    ('00000000-0000-0000-0000-000000000101', 'dev', 'sub-admin', 'admin@example.com', 'Admin', 'ACTIVE'),
+    ('00000000-0000-0000-0000-000000000102', 'dev', 'sub-agent', 'agent@example.com', 'Agent', 'ACTIVE')
+    on conflict (id) do nothing;
+
+-- memberships
+insert into app.tenant_membership (tenant_id, user_id, role, is_default)
+values
+    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000101', 'ADMIN', true),
+    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000102', 'AGENT', false)
+    on conflict (tenant_id, user_id) do nothing;
