@@ -70,5 +70,8 @@ services:
       - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - /Users/jiezhang/Desktop/frontmultiapp/dist:/srv/multiapp-frontend:ro
+      # remove the line below in production version
+      # while in dev version, replace `./frontend-dist` with your actual
+      # frontend dist path
+      - ./frontend-dist:/srv/multiapp-frontend:ro
     restart: unless-stopped
