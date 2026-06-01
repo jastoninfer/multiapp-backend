@@ -14,8 +14,8 @@ import java.util.UUID;
 public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRecord, IdempotencyId> {
     @Modifying
     @Query(value = """
-        insert into app.idempotency_record(tenant_id, actor_user_id, idempotency_key, request_hash, response_json, status)
-        values (:tenantId, :actorUserId, :idemKey, :requestHash, cast(:responseJson as jsonb), 'IN_PROGRESS')
+        insert into app.idempotency_record(tenant_id, actor_user_id, idempotency_key, request_hash, status)
+        values (:tenantId, :actorUserId, :idemKey, :requestHash, 'IN_PROGRESS')
         on conflict (tenant_id, actor_user_id, idempotency_key) do nothing
         """, nativeQuery = true)
     /*

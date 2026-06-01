@@ -15,7 +15,7 @@ public record TenantResponse(UUID id, String name,
                 Objects.requireNonNull(tenant.getId(), "tenant.id"),
                 Objects.requireNonNull(tenant.getName(), "tenant.name"),
                 Objects.requireNonNull(tenant.getStatus(), "tenant.status"),
-                Objects.requireNonNull(tenant.getCreatedAt(), "tenant.created_at")
+                tenant.getCreatedAt() //如果是刚创建, 没有flush可能为null
         );
     }
 }

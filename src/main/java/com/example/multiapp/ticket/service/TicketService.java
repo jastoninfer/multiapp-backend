@@ -37,8 +37,10 @@ import com.example.multiapp.ticket.auth.TicketAuthorizer;
 import com.example.multiapp.ticket.dto.*;
 import com.example.multiapp.ticket.entity.Ticket;
 import com.example.multiapp.ticket.event.TicketEventType;
+import com.example.multiapp.ticket.model.TicketPriority;
 import com.example.multiapp.ticket.model.TicketStatus;
 import com.example.multiapp.ticket.repo.TicketRepository;
+import com.example.multiapp.user.service.UserGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import jakarta.persistence.EntityManager;
@@ -72,6 +74,7 @@ public class TicketService {
     private final AttachmentRepository attachmentRepo;
     private final CommentRepository commentRepo;
     private final AuditWriter auditWriter;
+    private final UserGuard userGuard;
     @Transactional
     public TicketCreatedResponse create(RequestContext ctx, String idemKey, CreateTicketRequest req) {
         Objects.requireNonNull(ctx, "RequestContext");
@@ -89,16 +92,19 @@ public class TicketService {
                 TicketCreatedResponse.class);
         if (cached.isPresent()) return cached.get();
         // 2: 业务写入, ticket_no使用DB_default
+//        System.out.println("&&&&&");
         DomainEventType eventType = TicketEventType.TICKET_CREATED;
+        userGuard.requireActiveUser(req.requesterUserId());
         Ticket ticket = Ticket.create(tenantId, actorUserId, req.requesterUserId(),
-                req.requesterContactId(), req.priority(), req.ticketType(),
+                req.requesterContactId(), TicketPriority.MEDIUM, req.ticketType(),
                 req.title(), req.description(), req.locationText());
         ticketRepo.save(ticket);
+//        System.out.println("+++++");
         UUID ticketId = ticket.getId().getId();
         JsonNode payloadData = AuditPayloadBuilder.forEntity(ticketId, eventType)
-                .addField("createdByUserId", null, ticket.getCreatedByUserId().toString())
-                .addField("requesterUserId", null, ticket.getRequesterUserId().toString())
-                .addField("requesterContactId", null, ticket.getRequesterContactId().toString())
+                .addField("createdByUserId", null, ticket.getCreatedByUserId())
+                .addField("requesterUserId", null, ticket.getRequesterUserId())
+                .addField("requesterContactId", null, ticket.getRequesterContactId())
                 .addField("priority", null, ticket.getPriority().name())
                 .addField("title", null, ticket.getTitle())
                 .addField("description", null, ticket.getDescription())
@@ -145,6 +151,7 @@ public class TicketService {
                                 "title", "location_text"));
         UUID userId = ctx.userId();
         UUID tenantId = ctx.tenantId();
+        TicketSearchQuery searchQuery = toSearchQuery(query);
         // 主要的三个query字段:
         // - requster_user_id
         // - requester_contact_id
@@ -159,20 +166,36 @@ public class TicketService {
 //                    // 参数不符合, 返回空表
 //                    return Page.empty();
 //                }
-                return ticketRepo.findForCustomerResponse(tenantId, userId, query, pageable);
+                return ticketRepo.findForCustomerResponse(tenantId, userId, searchQuery, pageable);
             }
             case RESOURCE_USER -> {
-                return ticketRepo.findForResourceUserResponse(tenantId, userId, query, pageable);
+                return ticketRepo.findForResourceUserResponse(tenantId, userId, searchQuery, pageable);
             }
             case AGENT -> {
-                return ticketRepo.findForAgentResponse(tenantId, userId, query, pageable);
+                return ticketRepo.findForAgentResponse(tenantId, userId, searchQuery, pageable);
             }
             case ADMIN -> {
-                return ticketRepo.findForAdminResponse(tenantId, query, pageable);
+//                System.out.println(">>>>> our tenant id: " + tenantId);
+//                System.out.println("++++++++++++++++");
+                return ticketRepo.findForAdminResponse(tenantId, searchQuery, pageable);
             }
             default -> throw new IllegalArgumentException("Unhandled role: " + ctx.role());
         }
 //        return ticketRepo.findByIdTenantId(ctx.tenantId(), pageable).map(TicketResponse::from);
+    }
+
+    private TicketSearchQuery toSearchQuery(TicketQuery query) {
+        return new TicketSearchQuery(
+                query.ticketStatus() == null ? null : query.ticketStatus().name(),
+                query.ticketPriority() == null ? null : query.ticketPriority().name(),
+                query.ownerId(),
+                query.requesterUserId(),
+                query.requesterContactId(),
+                query.ticketType() == null ? null : query.ticketType().name(),
+                (query.q() == null ||  query.q().strip().isBlank()) ? null: query.q().strip(),
+                query.createdFrom(),
+                query.createdTo()
+        );
     }
 
     // 查看详情, 应该返回TicketDetailResponse
@@ -183,7 +206,7 @@ public class TicketService {
         // TODO:: 具体实现细节待考量
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(ticketId, "ticketId");
-        ticketAuth.requireRead(ctx, ticketId);
+        ticketAuth.requireRead(ctx, ticketId, false);
         UUID tenantId = ctx.tenantId();
         TicketResponse ticket = ticketRepo.findResponseByTenantIdAndId(tenantId, ticketId)
                 .orElseThrow(() -> new NotFoundException("ticket not found"));
@@ -200,20 +223,23 @@ public class TicketService {
                 () -> appointmentRepo.countPastByIdTenantIdAndTicketId(tenantId, ticketId),
                 10
         );
+        Boolean isManagedAsResourceUser = ctx.role() == RESOURCE_USER &&
+                ticketRepo.existsByIdTenantIdAndIdIdAndOwnerUserId(ctx.tenantId(),
+                        ticketId, ctx.userId());
 
-        SliceBlock<CommentSummary> comments = TicketDetailAssembler.sliceBlock(
-                size -> commentRepo.listSummariesByTicket(tenantId, ticketId,
-                        PageRequest.of(0, size).withSort(Sort.by(Sort.Order.desc("createdAt")))),
-                () -> commentRepo.countByIdTenantIdAndTicketIdAndDeletedAtIsNull(tenantId, ticketId),
-                20
-        );
+//        SliceBlock<CommentSummary> comments = TicketDetailAssembler.sliceBlock(
+//                size -> commentRepo.listSummariesByTicket(tenantId, ticketId,
+//                        PageRequest.of(0, size).withSort(Sort.by(Sort.Order.desc("createdAt")))),
+//                () -> commentRepo.countByIdTenantIdAndTicketIdAndDeletedAtIsNull(tenantId, ticketId),
+//                20
+//        );
         SliceBlock<AttachmentSummary> attachments = TicketDetailAssembler.sliceBlock(
                 size -> attachmentRepo.listSummariesByTicket(tenantId, ticketId,
                         PageRequest.of(0, size).withSort(Sort.by(Sort.Order.desc("createdAt")))),
                 () -> attachmentRepo.countByIdTenantIdAndTicketIdAndDeletedAtIsNull(tenantId, ticketId),
                 50
         );
-        return new TicketDetailResponse(ticket, upcoming, recentPast, comments, attachments);
+        return new TicketDetailResponse(ticket, isManagedAsResourceUser, upcoming, recentPast, null, attachments);
 
 //        return ticketRepo.findResponseByTenantIdAndId(ctx.tenantId(), ticketId)
 //                .orElseThrow(() -> new NotFoundException("ticket not found"));
@@ -266,13 +292,17 @@ public class TicketService {
                 .orElseThrow(() -> new NotFoundException("Ticket not found"));
         IfMatchPreconditions.require(ifMatch, ticket.getVersion());
         ticketAuth.requireReassign(ctx, ticketId, newAssignee);
+        userGuard.requireActiveUser(newAssignee);
         UUID fromOwnerUserId = ticket.getOwnerUserId();
         if(fromOwnerUserId.equals(newAssignee)) return;
         ticket.setNewOwner(newAssignee);
+//        if(ticket.getFirstResponseAt() == null) {
+//            ticket.setFirstResponseAt(OffsetDateTime.now());
+//        }
         DomainEventType eventType = TicketEventType.TICKET_ASSIGNEE_UPDATED;
         JsonNode payloadData = AuditPayloadBuilder.forEntity(ticketId, eventType)
-                .addField("ownerUserId", fromOwnerUserId.toString(),
-                        newAssignee.toString()).build();
+                .addField("ownerUserId", fromOwnerUserId,
+                        newAssignee).build();
         AuditLog auditLog = AuditLog.from(ctx, AuditEntityType.TICKET, ticketId, eventType,
                 DomainEventPayloads.envelopFrom(ctx, ticketId, payloadData));
         auditWriter.append(auditLog);
@@ -297,10 +327,14 @@ public class TicketService {
         DomainEventType eventType = TicketEventType.TICKET_UPDATED;
         AuditPayloadBuilder builder = AuditPayloadBuilder.forEntity(ticketId, eventType);
         boolean updated = false;
+//        System.out.println("we are here ++++++++");
+//        System.out.println(req.title());
+//        System.out.println(ticket.getTitle());
         if(req.title() != null && !req.title().isBlank()) {
             String fromTitle = ticket.getTitle();
             String newTitle = req.title().strip();
             if(!newTitle.equals(fromTitle)) {
+//                System.out.println("change title----->><<<");
                 ticket.changeTitle(newTitle);
                 builder.addField("title", fromTitle, newTitle);
             }
@@ -336,6 +370,8 @@ public class TicketService {
                 updated = true;
             }
         }
+        System.out.println("we are here ++++++++");
+        System.out.println(updated);
         if(!updated) return;
         AuditLog auditLog = AuditLog.from(ctx, AuditEntityType.TICKET, ticketId, eventType,
                 DomainEventPayloads.envelopFrom(ctx, ticketId, builder.build()));

@@ -18,8 +18,11 @@ import java.util.UUID;
 public interface CommentRepository extends JpaRepository<Comment, CommentId> {
     @Query("""
     select new com.example.multiapp.comment.dto.CommentSummary(
-        c.id.id, c.authorUserId, u.displayName, c.body, c.createdAt, c.editedAt
-    ) from Comment c left join AppUser u on u.id = c.authorUserId
+        c.id.id, c.authorUserId, u.displayName, cast(m.role as string), c.body,
+             cast(c.visibility as string),
+                 c.createdAt, c.editedAt
+    ) from Comment c left join AppUser u on u.id = c.authorUserId left join TenantMembership m
+        on (c.authorUserId = m.id.userId and m.id.tenantId = :tenantId)
     where c.id.tenantId = :tenantId and c.ticketId = :ticketId and c.deletedAt is null
     """)
     List<CommentSummary> listSummariesByTicket(
@@ -29,19 +32,31 @@ public interface CommentRepository extends JpaRepository<Comment, CommentId> {
     );
 
     @Query("""
-    select c from Comment c where c.id.tenantId = :tenantId and c.ticketId = :ticketId
+    select new com.example.multiapp.comment.dto.CommentSummary(
+        c.id.id, c.authorUserId, u.displayName, cast(m.role as string), c.body,
+             cast(c.visibility as string),
+                 c.createdAt, c.editedAt
+    ) from Comment c left join AppUser u on u.id = c.authorUserId left join TenantMembership m
+        on (c.authorUserId = m.id.userId and m.id.tenantId = :tenantId)
+    where c.id.tenantId = :tenantId and c.ticketId = :ticketId and c.deletedAt is null
     """)
-    Page<Comment> listCommentsAllByTicket(
+    Page<CommentSummary> listCommentsAllByTicket(
             @Param("tenantId") UUID tenantId,
             @Param("ticketId") UUID ticketId,
             Pageable pageable
     );
 
     @Query("""
-    select c from Comment c where c.id.tenantId = :tenantId and c.ticketId = :ticketId
+    select new com.example.multiapp.comment.dto.CommentSummary(
+        c.id.id, c.authorUserId, u.displayName, cast(m.role as string), c.body,
+             cast(c.visibility as string),
+                 c.createdAt, c.editedAt
+    ) from Comment c left join AppUser u on u.id = c.authorUserId left join TenantMembership m
+        on (c.authorUserId = m.id.userId and m.id.tenantId = :tenantId)
+    where c.id.tenantId = :tenantId and c.ticketId = :ticketId and c.deletedAt is null
         and c.visibility = 'PUBLIC'
     """)
-    Page<Comment> listCommentsPublicByTicket(
+    Page<CommentSummary> listCommentsPublicByTicket(
             @Param("tenantId") UUID tenantId,
             @Param("ticketId") UUID ticketId,
             Pageable pageable

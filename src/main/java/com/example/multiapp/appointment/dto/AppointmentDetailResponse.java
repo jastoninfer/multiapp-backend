@@ -8,6 +8,8 @@ import java.util.UUID;
 public record AppointmentDetailResponse(
         UUID id,
         long version,
+        UUID ticketId,
+        String ticketTitle,
         OffsetDateTime startAt,
         OffsetDateTime endAt,
         AppointmentStatus status,

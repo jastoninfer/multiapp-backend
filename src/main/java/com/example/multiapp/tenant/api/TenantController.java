@@ -61,7 +61,7 @@ public class TenantController {
             HttpServletRequest req
     ) {
         RequestContext ctx = RequestContexts.require(req);
-        return tenantService.transition(ctx, body.toStatus());
+        return tenantService.transition(ctx, body.targetTenantId(), body.toStatus());
     }
 
     @PatchMapping("/tenant")

@@ -3,6 +3,8 @@ package com.example.multiapp.idempotency.entity;
 import com.example.multiapp.idempotency.model.IdempotencyStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.Objects;
 
@@ -21,6 +23,7 @@ public class IdempotencyRecord {
     @Column(name = "request_hash", nullable = false, length = 64)
     private String requestHash;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name="response_json", columnDefinition = "jsonb")
     private String responseJson;
 

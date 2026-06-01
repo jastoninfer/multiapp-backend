@@ -11,7 +11,7 @@ import java.util.UUID;
 public interface TicketAuthorizer {
     void requireCreate(RequestContext ctx, CreateTicketRequest req);
     void requireList(RequestContext ctx, TicketQuery query);
-    void requireRead(RequestContext ctx, UUID ticketId);
+    void requireRead(RequestContext ctx, UUID ticketId, boolean needWrite);
     void requireUpdate(RequestContext ctx, UUID ticketId, UpdateTicketRequest req);
     void requireTransition(RequestContext ctx, UUID ticketId, TicketStatus newStatus);
     void requireReassign(RequestContext ctx, UUID ticketId, UUID newAssigneeId);

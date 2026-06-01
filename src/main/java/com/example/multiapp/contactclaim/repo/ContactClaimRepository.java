@@ -18,13 +18,15 @@ public interface ContactClaimRepository extends JpaRepository<ContactClaim, Cont
     // 通过code_hash找到可用claim并For update锁住这一行
     @Query(value = """
     select * from app.contact_claim
-        where code_hash = :codeHash
+        where tenant_id = :tenantId
+            and code_hash = :codeHash
             and consumed_at is null
             and expires_at > CURRENT_TIMESTAMP
         limit 1
         for update
     """, nativeQuery = true)
     Optional<ContactClaim> findActiveByCodeHashForUpdate(
+            @Param("tenantId") UUID tenantId,
             @Param("codeHash") String codeHash);
 
 

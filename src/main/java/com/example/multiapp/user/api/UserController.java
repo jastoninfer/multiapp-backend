@@ -5,10 +5,8 @@ import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.common.web.RequestContexts;
 import com.example.multiapp.membership.repo.TenantMembershipRepository;
 import com.example.multiapp.user.auth.UserAuthorizer;
-import com.example.multiapp.user.dto.MeResponse;
-import com.example.multiapp.user.dto.MeResponseWTenants;
-import com.example.multiapp.user.dto.MeTenantResponse;
-import com.example.multiapp.user.dto.UserTransitionRequest;
+import com.example.multiapp.user.auth.UserAuthorizerImpl;
+import com.example.multiapp.user.dto.*;
 import com.example.multiapp.user.entity.AppUser;
 import com.example.multiapp.user.repo.AppUserRepository;
 import com.example.multiapp.user.service.CurrentUserService;
@@ -29,6 +27,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserController {
     private final CurrentUserService userService;
+    private final UserAuthorizerImpl userAuthorizerImpl;
 
     @GetMapping("/me")
     public MeResponseWTenants me(@AuthenticationPrincipal Jwt jwt) {
@@ -40,6 +39,7 @@ public class UserController {
     @GetMapping("/me/tenants")
     public List<MeTenantResponse> myTenants(@AuthenticationPrincipal Jwt jwt) {
         AppUser user = userService.ensureLocalUser(jwt);
+//        System.out.println(user.getId());
         UUID userId = user.getId();
         return userService.listMyTenants(userId);
     }
@@ -50,6 +50,15 @@ public class UserController {
         UUID userId = user.getId();
         return userService.getMyDefaultTenant(userId).orElseThrow(
                 () -> new NotFoundException("default tenant not found"));
+    }
+
+    @PostMapping("/users/{userId}/default-tenant")
+    public List<MeTenantResponse> changeDefaultTenant(
+            @PathVariable UUID userId,
+            @Valid @RequestBody DefaultTenantRequest body,
+            HttpServletRequest req) {
+        RequestContext ctx = RequestContexts.require(req);
+        return userService.changeMyDefaultTenant(ctx, userId, body.tenantId());
     }
 
     @PostMapping("/users/{userId}/transition")

@@ -16,6 +16,7 @@ public record AttachmentSummary(
         String storageKey,
         String downloadUrl,
         UUID uploadedByUserId,
+        String uploadedByUserName,
         OffsetDateTime createdAt
 ) {
     public static AttachmentSummary from(AttachmentSummary a, String downloadUrl) {
@@ -29,6 +30,7 @@ public record AttachmentSummary(
                 a.storageKey,
                 downloadUrl,
                 a.uploadedByUserId,
+                a.uploadedByUserName,
                 a.createdAt
         );
     }

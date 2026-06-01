@@ -1,0 +1,4 @@
+spring:
+  flyway:
+    schemas: app
+    default-schema: app

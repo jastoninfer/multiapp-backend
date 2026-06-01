@@ -9,8 +9,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record AppointmentQuery(
-        @Setter
         @Nullable UUID resourceUserId,
+        @Nullable UUID ticketOwnerId,
         @Nullable UUID ticketId,
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         // startAtFrom
@@ -20,4 +20,24 @@ public record AppointmentQuery(
         @Nullable OffsetDateTime to,
         @Nullable AppointmentStatus status
 ) {
+        public AppointmentQuery withResourceUserId(UUID userId) {
+                return new AppointmentQuery(
+                        userId,
+                        ticketOwnerId,
+                        ticketId,
+                        from,
+                        to,
+                        status
+                );
+        }
+        public AppointmentQuery withTicketOwnerId(UUID ticketOwnerId) {
+                return new AppointmentQuery(
+                        resourceUserId,
+                        ticketOwnerId,
+                        ticketId,
+                        from,
+                        to,
+                        status
+                );
+        }
 }

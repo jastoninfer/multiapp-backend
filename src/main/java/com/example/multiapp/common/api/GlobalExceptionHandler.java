@@ -5,6 +5,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -69,9 +70,15 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiError accessDenied(AccessDeniedException ex) {
-        return ApiError.of("ACCESS_DENIED", ex.getMessage());
+        return ApiError.of("FORBIDDEN", ex.getMessage());
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ApiError authentication(AuthenticationException ex) {
+        return ApiError.of("UNAUTHORIZED", ex.getMessage());
     }
 
     @ExceptionHandler(PreconditionFailedException.class)
@@ -83,6 +90,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiError unknown(Exception ex) {
+//        System.out.println(">>>>>>>");
+//        System.out.println(ex);
+//        ex.printStackTrace();
         return ApiError.of("INTERNAL_ERROR", "Unexpected error");
     }
 }

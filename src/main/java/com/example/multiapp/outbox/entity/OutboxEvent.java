@@ -73,8 +73,8 @@ public class OutboxEvent extends CreatedOnlyEntity {
     private static OutboxEvent newEvent(UUID tenantId, String eventType,
                                        JsonNode payloadJson, String dedupKey) {
         Objects.requireNonNull(tenantId, "tenantId");
-        requireNonBlank(eventType.key(), "eventType");
-        Objects.requireNonNull(payloadJson, "payloadJson");
+        requireNonBlank(eventType, "eventType");
+//        Objects.requireNonNull(payloadJson, "payloadJson");
 
         var e = new OutboxEvent();
         e.id = new OutboxId(tenantId, UUID.randomUUID());

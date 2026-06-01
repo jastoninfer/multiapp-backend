@@ -1,6 +1,7 @@
 package com.example.multiapp.comment.api;
 
 import com.example.multiapp.comment.dto.CommentResponse;
+import com.example.multiapp.comment.dto.CommentSummary;
 import com.example.multiapp.comment.dto.CreateCommentRequest;
 import com.example.multiapp.comment.service.CommentService;
 import com.example.multiapp.common.api.PageResponse;
@@ -27,18 +28,18 @@ public class CommentController {
 
     private final CommentService commentService;
     @PostMapping()
-    public ResponseEntity<CommentResponse> post(
+    public ResponseEntity<Void> post(
             @PathVariable UUID ticketId,
             @Valid @RequestBody CreateCommentRequest body,
             HttpServletRequest req
     ) {
         RequestContext ctx = RequestContexts.require(req);
-        CommentResponse resp = commentService.post(ctx, ticketId, body);
-        return ResponseEntity.status(HttpStatus.CREATED).body(resp);
+        commentService.post(ctx, ticketId, body);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping
-    public PageResponse<CommentResponse> list(
+    public PageResponse<CommentSummary> list(
             @PathVariable UUID ticketId,
             @PageableDefault(size = 25)Pageable pageable,
             HttpServletRequest req

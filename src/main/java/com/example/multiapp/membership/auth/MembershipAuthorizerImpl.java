@@ -5,7 +5,6 @@ import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.membership.repo.TenantMembershipRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -22,7 +21,15 @@ public class MembershipAuthorizerImpl implements MembershipAuthorizer{
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(action, "action");
         if(ctx.role() == MembershipRole.ADMIN) return;
-        throw new AccessDeniedException("Access denied: action=%s".formatted(action));
+        throw new ForbiddenException("Access denied: action=%s".formatted(action));
+    }
+
+    @Override
+    public void requireList(RequestContext ctx) {
+        Objects.requireNonNull(ctx, "ctx");
+        if(ctx.role() == MembershipRole.ADMIN ||
+            ctx.role() == MembershipRole.AGENT) return;
+        throw new ForbiddenException("Access denied: list members");
     }
 
     // READ, UPDATE, DELETE
@@ -37,11 +44,11 @@ public class MembershipAuthorizerImpl implements MembershipAuthorizer{
             if(ctx.role() == MembershipRole.ADMIN) return;
             switch (action) {
                 case UPDATE, DELETE -> {
-                    throw new AccessDeniedException("Access denied: action=%s".formatted(action));
+                    throw new ForbiddenException("Access denied: action=%s".formatted(action));
                 }
                 case READ -> {
-                    if(!userId.equals(ctx.userId()))
-                        throw new AccessDeniedException("Access denied: action=%s".formatted(action));
+                    if(ctx.role() != MembershipRole.AGENT && !userId.equals(ctx.userId()))
+                        throw new ForbiddenException("Access denied: action=%s".formatted(action));
                 }
                 default -> throw new IllegalArgumentException("Unhandled action: " + action);
             }

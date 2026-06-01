@@ -1,10 +1,39 @@
 HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
 
-### STS ###
+# Build output
+target/
+build/
+dist/
+*.log
+
+# Maven wrapper binary cache
+.mvn/wrapper/maven-wrapper.jar
+
+# Local environment files
+.env*
+!.env.example
+!.env.demo-prod.example
+
+# Keep the public sanitized Keycloak template, never the real import/export.
+keycloak/import/multiapp-realm.json
+keycloak-export/
+
+# Local upload/storage artifacts
+uploads/
+/[$][{]app.upload.dir/
+
+# Local scripts and private project notes
+/*.sh
+/MTTA_SAAS.md
+/前端设计.md
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.iws
+*.iml
+*.ipr
 .apt_generated
 .classpath
 .factorypath
@@ -13,25 +42,8 @@ target/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
+# NetBeans
 /nbproject/private/
 /nbbuild/
-/dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### VS Code ###
-.vscode/
-
-### ENVIRONMENT VARIABLES ###
-# .env.* -- 考虑到开发环境迁移的需要, 目前同时上传.env到git
-!.env.example

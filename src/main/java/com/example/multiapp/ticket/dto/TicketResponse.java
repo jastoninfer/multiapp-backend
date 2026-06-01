@@ -25,8 +25,16 @@ public record TicketResponse (
         String ownerName,
         UUID requesterUserId,
         UUID requesterContactId,
+        UUID linkedUserId, // 当且仅当requeserContactId非空, 且对应contact已经链接到某个user
+        // 为那个use的id
         String requesterName,
+        UUID createdByUserId,
+        String createdByName,
         String title,
+        String description,
+        String locationText,
+        OffsetDateTime firstResponseAt,
+        OffsetDateTime closedAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         long commentCount,

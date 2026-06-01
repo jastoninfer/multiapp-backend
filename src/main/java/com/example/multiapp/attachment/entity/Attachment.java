@@ -46,7 +46,7 @@ public class Attachment extends CreatedOnlyEntity {
     @Column(name = "storage_key", nullable = false)
     private String storageKey;
 
-    @Column(name = "sha256")
+    @Column(name = "sha256", columnDefinition = "char(64)")
     private String sha256;
 
     @Column(name = "uploaded_by_user_id", nullable = false)
@@ -77,6 +77,15 @@ public class Attachment extends CreatedOnlyEntity {
         if(name == null || name.isBlank()) return "file";
         // 只做展示名, 避免路径分隔符
         String safeName = name.replace("\\", "_").replace("/", "_");
-        return safeName.substring(0, 255);
+        int max_length = 255;
+        if(safeName.length() <= max_length) return safeName;
+        return safeName.substring(0, max_length);
+    }
+
+    public void softDelete() {
+        if(this.deletedAt != null) {
+            throw new IllegalStateException("cannot delete existing attachment");
+        }
+        this.deletedAt = OffsetDateTime.now();
     }
 }

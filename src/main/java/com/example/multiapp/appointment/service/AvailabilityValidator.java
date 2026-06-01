@@ -52,7 +52,7 @@ public class AvailabilityValidator {
     }
 
     /*
-    * 预约完全被某个单日工作窗口覆盖, 建设预约不跨天(工业级可以支持跨天, v1不需要)
+    * 预约完全被某个单日工作窗口覆盖, 假设预约不跨天(工业级可以支持跨天, v1不需要)
     * */
     private boolean isCoveredByAnyWorkingWindow(List<ResourceWorkingHours> rules, TimeRange t, ZoneId zone) {
         LocalDate startDate = t.start().atZoneSameInstant(zone).toLocalDate();

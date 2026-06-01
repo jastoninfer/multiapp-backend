@@ -5,7 +5,7 @@ import com.example.multiapp.comment.model.CommentVisibility;
 import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.membership.model.MembershipRole;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import com.example.multiapp.common.api.ForbiddenException;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -19,7 +19,7 @@ public class CommentAuthorizerImpl implements CommentAuthorizer{
         Objects.requireNonNull(req, "req");
         if(req.visibility() == CommentVisibility.INTERNAL) {
             if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-                throw new AccessDeniedException("only admin/agent can post internal comment");
+                throw new ForbiddenException("only admin/agent can post internal comment");
             }
         }
     }

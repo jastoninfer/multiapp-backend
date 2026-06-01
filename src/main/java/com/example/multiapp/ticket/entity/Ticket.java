@@ -25,8 +25,9 @@ public class Ticket extends AuditedEntity {
     @ToString.Include
     private TicketId id;
 
+    // 数据库生成, 禁止hibernate为此值默认打null
     @ToString.Include
-    @Column(name = "ticket_no", nullable = false, updatable = false)
+    @Column(name = "ticket_no", nullable = false, insertable = false, updatable = false)
     private Long ticketNo;
 
     @Version
@@ -55,10 +56,10 @@ public class Ticket extends AuditedEntity {
     private TicketPriority priority;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "ticket_type", nullable = false, updatable = false)
+    @Column(name = "ticket_type", nullable = false)
     private TicketType ticketType;
 
-    @Column(name = "title", nullable = false, updatable = false)
+    @Column(name = "title", nullable = false)
     private String title;
 
     @Column(name = "description")
@@ -69,6 +70,10 @@ public class Ticket extends AuditedEntity {
 
     @Column(name = "closed_at")
     private OffsetDateTime closedAt;
+
+    @Setter
+    @Column(name = "first_response_at")
+    private OffsetDateTime firstResponseAt;
 
     public static Ticket create(UUID tenantId, UUID actorUserId, UUID requesterUserId,
                                 UUID requesterContactId, TicketPriority priority,
@@ -114,11 +119,20 @@ public class Ticket extends AuditedEntity {
         if (target == TicketStatus.CLOSED)
             this.closedAt = Objects.requireNonNull(now, "now must not be null");;
         if (target == TicketStatus.REOPENED) this.closedAt = null;
+//        if(to == TicketStatus.IN_PROGRESS && this.firstResponseAt == null) {
+//            this.firstResponseAt = OffsetDateTime.now();
+//        }
     }
+
+//    public void setFirstResponseAt(OffsetDateTime time) {
+//        this.firstResponseAt = time;
+//    }
 
     public void setNewOwner(UUID newAssignee) {
         this.ownerUserId = newAssignee;
+//        if(this.firstResponseAt == null) this.firstResponseAt = OffsetDateTime.now();
     }
+
 
     public void changeTitle(String newTitle) {
         this.title = newTitle;
@@ -126,10 +140,12 @@ public class Ticket extends AuditedEntity {
 
     public void changeType(TicketType type) {
         this.ticketType = type;
+        if(this.firstResponseAt == null) this.firstResponseAt = OffsetDateTime.now();
     }
 
     public void changePriority(TicketPriority newPriority){
         this.priority = Objects.requireNonNull(newPriority);
+        if(this.firstResponseAt == null) this.firstResponseAt = OffsetDateTime.now();
     }
 
     public void updateDescription(String newDescription){

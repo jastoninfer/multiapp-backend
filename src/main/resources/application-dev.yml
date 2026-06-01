@@ -40,3 +40,5 @@ server:
 app:
   upload:
     dir: /tmp/multiapp/uploads
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}

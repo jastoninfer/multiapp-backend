@@ -1,0 +1,17 @@
+{
+    auto_https off
+}
+
+http://app.localhost {
+    root * /srv/multiapp-frontend
+    try_files {path} /index.html
+    file_server
+}
+
+http://api.localhost {
+    reverse_proxy backend:8081
+}
+
+http://auth.localhost {
+    reverse_proxy keycloak:8080
+}

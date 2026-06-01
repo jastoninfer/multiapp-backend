@@ -19,7 +19,8 @@ public record CreateTicketRequest (
         // comment 应该基本同description, 通常更短点
         @Pattern(regexp = "^(?:[^\\p{Cc}]|[\\r\\n\\t])*$", message = "invalid description")
         @Size(max = 4000) String description,
-        @NotNull TicketPriority priority,
+//        @NotNull TicketPriority priority, 不应该在创建时自带priority, 如果需要且有权限
+        // 后面自己调
         @NotNull TicketType ticketType,
         // 类似title的方法处理locationText
         @Pattern(regexp = "^[^\\p{Cc}\\r\\n]+$", message = "invalid location text")
@@ -27,7 +28,7 @@ public record CreateTicketRequest (
 ){
     public CreateTicketRequest {
         Objects.requireNonNull(title, "title");
-        Objects.requireNonNull(priority, "priority");
+//        Objects.requireNonNull(priority, "priority");
         Objects.requireNonNull(ticketType, "ticketType");
 
         boolean userPresent = requesterUserId != null;
@@ -48,7 +49,7 @@ public record CreateTicketRequest (
         String loc = (locationText == null) ? "" : locationText;
         return "requester=" + requester
                 + "|title=" + escAndNormalize(title)
-                + "|priority=" + priority.name()
+//                + "|priority=" + priority.name()
                 + "|ticketType=" + ticketType.name()
                 + "|locationText" + escAndNormalize(loc);
     }

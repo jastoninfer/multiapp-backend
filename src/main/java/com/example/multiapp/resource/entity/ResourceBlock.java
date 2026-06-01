@@ -25,10 +25,10 @@ public class ResourceBlock extends AuditedEntity {
     @Column(name = "resource_user_id", nullable = false)
     private UUID resourceUserId;
 
-    @Column(name = "resource_user_id", nullable = false)
+    @Column(name = "start_at", nullable = false)
     private OffsetDateTime startAt;
 
-    @Column(name = "start_at", nullable = false)
+    @Column(name = "end_at", nullable = false)
     private OffsetDateTime endAt;
 
     @Column(name = "reason", nullable = false)

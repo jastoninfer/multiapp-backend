@@ -1,4 +1,5 @@
 -- 数据库初始化
+create schema if not exists app;
 -- TENANT
 -- 由于tenant是超级管理员才有修改权限, 只考虑创建请求的幂等实现
 -- 对于读写并发的乐观锁控制, 暂不考虑
@@ -100,18 +101,18 @@ create unique index uq_contact_tenant_phone_norm
 
 -- TICKET 工单
 -- 工单可能会被并发修改(PATCH), 增加version字段支持乐观锁
-create sequence app.ticket_no_seq start with 1;
+create sequence ticket_no_seq start with 1;
 create table ticket(
     tenant_id uuid not null,
     id uuid not null,
-    ticket_no bigint not null default nextval('app.ticket_no_seq'),
+    ticket_no bigint not null default nextval('ticket_no_seq'),
     version bigint not null default 0, -- 乐观锁
     requester_user_id uuid default null,
     requester_contact_id uuid default null,
     created_by_user_id uuid not null,
     owner_user_id uuid default null,
     status text not null check(status in
-        ('NEW','IN_PROGRESS','RESOLVED','CLOSED','REOPENED')
+        ('NEW','IN_PROGRESS','CLOSED','REOPENED')
     ),
     priority text not null check(priority in
         ('LOW','MEDIUM','HIGH','URGENT')
@@ -166,10 +167,11 @@ create table contact_claim(
     consumed_at timestamptz,
     consumed_by_user_id uuid,
     created_by_user_id uuid not null,
-    create_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
     -- 可选: 审计/风控
     attempts int not null default 0,
     last_attempt_at timestamptz,
+    --
     primary key (tenant_id, id),
     constraint fk_claim_contact
         foreign key (tenant_id, contact_id)
@@ -181,17 +183,21 @@ create table contact_claim(
     constraint fk_contact_claim_consumed_by
         foreign key (tenant_id, consumed_by_user_id)
         references tenant_membership(tenant_id, user_id),
-    constraint ck_contact_claim_time check ( expires_at > create_at )
+    constraint ck_contact_claim_time check ( expires_at > created_at )
 );
 -- 查找未消费且过期的claim: 用hash精确命中
 create index ix_contact_claim_hash_active on contact_claim(code_hash, expires_at)
     where consumed_at is null;
 -- 一个contact同时只允许有一个"有效claim"(避免多码并存)
-create unique index uq_contact_claim_active_per_contact on contact_claim(tenant_id, contact_id)
-    where consumed_at is null;
+-- create unique index uq_contact_claim_active_per_contact on contact_claim(tenant_id, contact_id)
+--     where consumed_at is null;
 create index ix_claim_tenant_contact on contact_claim (tenant_id, contact_id);
 -- 自动清理/运营使用
 create index ix_claim_expires_at on contact_claim(expires_at);
+-- 优化查询
+create index if not exists ix_contact_claim_active_latest
+    on app.contact_claim(tenant_id, contact_id, expires_at desc, created_at desc, id desc)
+    where consumed_at is null;
 
 -- 同一contact同时只能有一个未消耗claim(partial unique index)
 -- [出于性能考虑, 这部分阅读放在API层来进行限制]
@@ -205,15 +211,16 @@ create table audit_log(
     tenant_id uuid not null,
     id uuid not null,
     actor_user_id uuid, -- null 表示系统
-    entity_type text not null
-        check (entity_type in (
-            'TICKET',
-            'APPOINTMENT',
-            'COMMENT',
-            'ATTACHMENT',
-            'USER',
-            'TENANT'
-        )),
+    entity_type text not null,
+--         check (entity_type in (
+--             'TICKET',
+--             'APPOINTMENT',
+--             'COMMENT',
+--             'ATTACHMENT',
+--             'USER',
+--             'TENANT',
+--             'RESOURCE_BLOCK'
+--         )),
     entity_id uuid not null,
     action text not null,
     diff_json jsonb,
@@ -272,8 +279,7 @@ create table outbox_event(
     last_error text,
     primary key (tenant_id, id)
 );
-create unique index uq_outbox_dedup on outbox_event(tenant_id, event_type, dedup_key)
-    where dedup_key is not null;
+create unique index uq_outbox_dedup on outbox_event(tenant_id, event_type, dedup_key);
 -- WORKER拉取NEW且到期(next_attempt_at为空视为立刻可重试)
 -- 这个索引支撑 WHERE tenant_id=? AND status='NEW' AND (next_attempt_at is null or next_attempt_at<=now())
 -- 以及 ORDER BY created_at
@@ -346,19 +352,19 @@ create table appointment(
     -- ticket 必须属于同一tenant
     constraint fk_appointment_ticket
         foreign key (tenant_id, ticket_id)
-        references app.ticket (tenant_id, id),
+        references ticket (tenant_id, id),
     -- 资源(技师)必须是该租户成员
     constraint fk_appointment_resource_membership
         foreign key (tenant_id, resource_user_id)
-        references app.tenant_membership(tenant_id, user_id),
+        references tenant_membership(tenant_id, user_id),
     -- customer_user_id如果存在, 必须为租户成员
     constraint fk_appointment_customer_user_membership
         foreign key (tenant_id, customer_user_id)
-        references app.tenant_membership(tenant_id, user_id),
+        references tenant_membership(tenant_id, user_id),
     -- customer_contact_id 如果存在, 必须是该租户contact
     constraint fk_appointment_customer_contact
         foreign key (tenant_id, customer_contact_id)
-        references app.contact(tenant_id, id)
+        references contact(tenant_id, id)
 );
 
 -- 核心不变量: 同一tenant+同一resource_user_id的占用时间窗口不能重叠(仅对占用状态生效)
@@ -404,7 +410,7 @@ create table ticket_comment(
     primary key (tenant_id, id),
     constraint fk_comment_ticket
         foreign key (tenant_id, ticket_id)
-        references app.ticket(tenant_id, id)
+        references ticket(tenant_id, id)
         on delete cascade,
     constraint fk_comment_author
         foreign key (author_user_id)
@@ -437,14 +443,14 @@ create table ticket_attachment(
     storage_provider text not null default 'LOCAL'
         check (storage_provider in ('LOCAL', 'S3')),
     storage_key text not null check (length(btrim(storage_key)) > 0),
-    sha256 char(64),
+    sha256 varchar(64),
     uploaded_by_user_id uuid not null,
     created_at timestamptz not null default now(),
     deleted_at timestamptz,
     primary key (tenant_id, id),
     constraint fk_attachment_ticket
         foreign key (tenant_id, ticket_id)
-        references app.ticket(tenant_id, id)
+        references ticket(tenant_id, id)
         on delete cascade,
     constraint fk_attachment_uploader
         foreign key (uploaded_by_user_id)
@@ -492,7 +498,7 @@ alter table resource_block
         resource_user_id with =,
         tstzrange(start_at,end_at,'[)') with &&
     )
-    where (deleted_at is not null);
+    where (deleted_at is null);
 
 create table resource_working_hours(
     tenant_id uuid not null,

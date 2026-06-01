@@ -18,14 +18,14 @@ import java.util.UUID;
 @Component
 public class LocalAttachmentStorage implements AttachmentStorage {
     private final Path root;
-    public LocalAttachmentStorage(@Value("${app.upload.dir") String rootDir) {
+    public LocalAttachmentStorage(@Value("${app.upload.dir}") String rootDir) {
         this.root = Paths.get(rootDir).toAbsolutePath().normalize();
     }
 
     @Override
     public String save(UUID tenantId, UUID ticketId, UUID attachmentId, MultipartFile file) throws IOException {
         // storageKey只用系统生成, 避免目录穿越; 文件名只做展示用
-        String key = tenantId + "/tickets/" + ticketId + "/attachments" + attachmentId;
+        String key = tenantId + "/tickets/" + ticketId + "/attachments/" + attachmentId;
         Path target = root.resolve(key).normalize();
         if(!target.startsWith(root)) throw new SecurityException("Invalid Path");
         Files.createDirectories(target.getParent());
@@ -38,6 +38,9 @@ public class LocalAttachmentStorage implements AttachmentStorage {
     @Override
     public Resource loadAsResource(String storageKey) {
         Path p = resolvePath(storageKey);
+        System.out.println(storageKey);
+        System.out.println(p.toAbsolutePath());
+        System.out.println(">>>><<<<");
         return new FileSystemResource(p);
     }
 

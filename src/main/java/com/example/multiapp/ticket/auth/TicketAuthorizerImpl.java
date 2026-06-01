@@ -16,7 +16,7 @@ import com.example.multiapp.ticket.entity.Ticket;
 import com.example.multiapp.ticket.model.TicketStatus;
 import com.example.multiapp.ticket.repo.TicketRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import com.example.multiapp.common.api.ForbiddenException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectReader;
@@ -60,7 +60,7 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
         // agent可以给普通客户创建工单
         // resource_user/customer可以给自己创建工单
         if (ctx.role() == MembershipRole.RESOURCE_USER || ctx.role() == MembershipRole.CUSTOMER) {
-            if (req.requesterUserId() == null || req.requesterUserId() != ctx.userId()) {
+            if (req.requesterUserId() == null || !req.requesterUserId().equals(ctx.userId())) {
                 throw new IllegalArgumentException("Customer or Resource User can only create ticket for themselves");
             }
         }
@@ -99,12 +99,12 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
 //                    new IllegalArgumentException("no such contact [%s] under tenant [%s]".formatted(
 //                            query.requesterContactId(), ctx.tenantId()))).getLinkedUserId()
 //            != ctx.userId()) {
-//                throw new AccessDeniedException("CUSTOMER or RESOURCE USER can only access their own tickets");
+//                throw new ForbiddenException("CUSTOMER or RESOURCE USER can only access their own tickets");
 //            }
 //        } else if (ctx.role() == MembershipRole.AGENT) {
-//            // 可以查看assign给自己的tickets
+//            // 可以查看assign给自己的tickets, 错误用法, UUID不能使用==/!=比较
 //            if(query.assigneeId() != null && query.assigneeId() != ctx.userId()) {
-//                throw new AccessDeniedException("AGENT can not access tickets not assigned to them");
+//                throw new ForbiddenException("AGENT can not access tickets not assigned to them");
 //            }
 //        }
     }
@@ -115,7 +115,7 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
     * */
     @Transactional(readOnly = true)
     @Override
-    public void requireRead(RequestContext ctx, UUID ticketId) {
+    public void requireRead(RequestContext ctx, UUID ticketId, boolean needWrite) {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(ticketId, "ticketId");
         UUID userId = Objects.requireNonNull(ctx.userId(), "ctx.userId");
@@ -123,7 +123,7 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
         Ticket ticket = ticketRepo.findByIdTenantIdAndIdId(ctx.tenantId(), ticketId).orElseThrow(
                 () -> new NotFoundException("ticket: [%s] not found under tenant: [%s]"
                         .formatted(ticketId, ctx.tenantId())));
-        if(ticket.getRequesterUserId() == userId) return;
+        if(userId.equals(ticket.getRequesterUserId())) return;
         UUID contactId = ticket.getRequesterContactId();
         if(contactId != null && contactRepo.existsByIdTenantIdAndIdIdAndLinkedUserId(
                 tenantId, contactId, userId)) return;
@@ -134,14 +134,15 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
                         tenantId, ticketId, userId)) return;
             }
             case AGENT -> {
-                if(ticket.getOwnerUserId().equals(userId)) return;
+                if(userId.equals(ticket.getOwnerUserId()) ||
+                        (!needWrite&& userId.equals(ticket.getCreatedByUserId()))) return;
             }
             case ADMIN -> {
                 return;
             }
             default -> throw new IllegalArgumentException("Unhandled role: " + ctx.role());
         }
-        throw new AccessDeniedException("not authorized to access ticket: [%s]".formatted(ticketId));
+        throw new ForbiddenException("not authorized to access ticket: [%s]".formatted(ticketId));
     }
 
     /*
@@ -172,7 +173,7 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
             }
             default -> throw new IllegalArgumentException("Unhandled role: " + ctx.role());
         }
-        throw new AccessDeniedException("not authorized assign ticket");
+        throw new ForbiddenException("not authorized assign ticket");
     }
 
     /*
@@ -186,10 +187,19 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
         Objects.requireNonNull(newStatus, "newStatus");
         Ticket ticket = ticketRepo.findByIdTenantIdAndIdId(ctx.tenantId(), ticketId).orElseThrow(
                 () -> new NotFoundException("ticket: [%s] not found".formatted(ticketId)));
+        boolean isTicketRequester = (ticket.getRequesterUserId() != null &&
+                ticket.getRequesterUserId().equals(ctx.userId())) ||
+                (ticket.getRequesterContactId() != null &&
+                        contactRepo.existsByIdTenantIdAndIdIdAndLinkedUserId(
+                                ctx.tenantId(), ticket.getRequesterContactId(), ctx.userId()));
         switch (ctx.role()) {
-            case CUSTOMER, RESOURCE_USER -> {}
+            case CUSTOMER, RESOURCE_USER -> {
+                if(isTicketRequester && newStatus == TicketStatus.REOPENED) {
+                    return;
+                }
+            }
             case AGENT -> {
-                if(ticket.getOwnerUserId().equals(ctx.userId()) && newStatus == TicketStatus.CLOSED)
+                if(ctx.userId().equals(ticket.getOwnerUserId()) && newStatus == TicketStatus.CLOSED)
                     return;
 //                if(newStatus == TicketStatus.CLOSED) return;
             }
@@ -198,7 +208,7 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
             }
             default -> throw new IllegalArgumentException("Unhandled role: " + ctx.role());
         }
-        throw new AccessDeniedException("not authorized transition ticket");
+        throw new ForbiddenException("not authorized transition ticket");
     }
 
     @Transactional(readOnly = true)
@@ -209,23 +219,41 @@ public class TicketAuthorizerImpl implements TicketAuthorizer{
         Objects.requireNonNull(req, "req");
         Ticket ticket = ticketRepo.findByIdTenantIdAndIdId(ctx.tenantId(), ticketId).orElseThrow(
                 () -> new NotFoundException("ticket: [%s] not found".formatted(ticketId)));
-        // 基础逻辑, 不论身份都可以通过此通过检测
-        if(req.priority() == null && req.ticketType() == null) {
-            if(ticket.getRequesterUserId() != null) {
-                if(ticket.getRequesterUserId().equals(ctx.userId())) return;
-            } else if(contactRepo.existsByIdTenantIdAndIdIdAndLinkedUserId(
-                    ctx.tenantId(), ticket.getRequesterContactId(), ctx.userId()))
-                return;
+        if(ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new ForbiddenException("ticket has been closed");
         }
+        // 任何人不允许修改已经关闭ticket的字段, 除非先消除CLOSED状态
+        // 基础逻辑, 不论身份都可以通过此通过检测
+        // customer 不能修改priority | ticketType
+        // agent 不能修改 ticketType
+        boolean isTicketOwner = (ticket.getRequesterUserId() != null &&
+                ticket.getRequesterUserId().equals(ctx.userId())) ||
+                (ticket.getRequesterContactId() != null &&
+                        contactRepo.existsByIdTenantIdAndIdIdAndLinkedUserId(
+                                ctx.tenantId(), ticket.getRequesterContactId(), ctx.userId()));
+//        if(req.priority() == null && req.ticketType() == null) {
+//            // 如果不修改受保护字段
+//            if(ticket.getRequesterUserId() != null) {
+//                if(ticket.getRequesterUserId().equals(ctx.userId())) return;
+//            } else if(contactRepo.existsByIdTenantIdAndIdIdAndLinkedUserId(
+//                    ctx.tenantId(), ticket.getRequesterContactId(), ctx.userId()))
+//                return;
+//        }
         // 专有逻辑
         switch (ctx.role()) {
-            case CUSTOMER, RESOURCE_USER -> {}
+            case CUSTOMER, RESOURCE_USER -> {
+                if(isTicketOwner && req.priority() == null && req.ticketType() == null
+                && ticket.getStatus() != TicketStatus.CLOSED) return;
+            }
             case AGENT -> {
-                if(ticket.getOwnerUserId().equals(ctx.userId()) && req.ticketType() == null) return;
+                if((isTicketOwner || ctx.userId().equals(ticket.getOwnerUserId())) &&
+                        req.ticketType() == null)
+                    return;
+//                if(ctx.userId().equals(ticket.getOwnerUserId()) && req.ticketType() == null) return;
             }
             case ADMIN -> { return; }
             default -> throw new IllegalArgumentException("Unhandled role: " + ctx.role());
         }
-        throw new AccessDeniedException("not authorized to update the ticket with given arguments");
+        throw new ForbiddenException("not authorized to update the ticket with given arguments");
     }
 }

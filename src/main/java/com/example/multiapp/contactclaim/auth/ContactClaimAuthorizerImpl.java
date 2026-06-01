@@ -3,7 +3,7 @@ package com.example.multiapp.contactclaim.auth;
 import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.membership.model.MembershipRole;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import com.example.multiapp.common.api.ForbiddenException;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -19,7 +19,7 @@ public class ContactClaimAuthorizerImpl implements ContactClaimAuthorizer{
         if (ctx.role() == MembershipRole.ADMIN || ctx.role() == MembershipRole.AGENT) {
             return;
         }
-        throw new AccessDeniedException("user: [%s] is not authorized to issue a contact claim".
+        throw new ForbiddenException("user: [%s] is not authorized to issue a contact claim".
                 formatted(ctx.userId()));
     }
 

@@ -5,7 +5,7 @@ import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.membership.repo.TenantMembershipRepository;
 import com.example.multiapp.resource.dto.CreateResourceBlockRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import com.example.multiapp.common.api.ForbiddenException;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -27,10 +27,10 @@ public class ResourceBlockAuthorizerImpl implements ResourceBlockAuthorizer{
         }
         if(ctx.role() == MembershipRole.RESOURCE_USER) {
             if(!ctx.userId().equals(resourceUserId)) {
-                throw new AccessDeniedException("resource user can create only his own resource block");
+                throw new ForbiddenException("resource user can create only his own resource block");
             }
         } else if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin/agent/resource user can create resource block");
+            throw new ForbiddenException("only admin/agent/resource user can create resource block");
         }
     }
 
@@ -40,10 +40,10 @@ public class ResourceBlockAuthorizerImpl implements ResourceBlockAuthorizer{
         Objects.requireNonNull(resourceUserId, "resourceUserId");
         if(ctx.role() == MembershipRole.RESOURCE_USER) {
             if(!ctx.userId().equals(resourceUserId)) {
-                throw new AccessDeniedException("resource user can view only his own resource blocks");
+                throw new ForbiddenException("resource user can view only his own resource blocks");
             }
         } else if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin/agent/resource user can view resource blocks");
+            throw new ForbiddenException("only admin/agent/resource user can view resource blocks");
         }
     }
 
@@ -53,10 +53,10 @@ public class ResourceBlockAuthorizerImpl implements ResourceBlockAuthorizer{
         Objects.requireNonNull(resourceUserId, "resourceUserId");
         if(ctx.role() == MembershipRole.RESOURCE_USER) {
             if(!ctx.userId().equals(resourceUserId)) {
-                throw new AccessDeniedException("resource user can view delete his own resource blocks");
+                throw new ForbiddenException("resource user can view delete his own resource blocks");
             }
         } else if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin/agent/resource user can delete resource blocks");
+            throw new ForbiddenException("only admin/agent/resource user can delete resource blocks");
         }
     }
 }

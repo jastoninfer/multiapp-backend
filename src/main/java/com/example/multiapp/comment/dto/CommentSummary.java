@@ -7,7 +7,9 @@ public record CommentSummary(
         UUID id,
         UUID actorUserId,
         String authorName, // 跨表
+        String role,
         String body,
+        String visibility,
         OffsetDateTime createdAt,
         OffsetDateTime editedAt
 ) {

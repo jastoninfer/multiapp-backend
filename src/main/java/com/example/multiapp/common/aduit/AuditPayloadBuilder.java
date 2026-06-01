@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.Nullable;
 import org.springframework.data.web.OffsetScrollPositionArgumentResolver;
 
 import java.util.Objects;
@@ -27,7 +28,7 @@ public final class AuditPayloadBuilder {
         return new AuditPayloadBuilder(entityId.toString(), eventType.key());
     }
 
-    public AuditPayloadBuilder addField(String field, Object from, Object to) {
+    public AuditPayloadBuilder addField(String field, Object from, @Nullable Object to) {
         Objects.requireNonNull(field, "field");
         ObjectNode f = fields.addObject();
         f.put("field", field);

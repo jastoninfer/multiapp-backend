@@ -18,7 +18,7 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Attachme
     @Query("""
     select new com.example.multiapp.attachment.dto.AttachmentSummary(
         a.id.id, a.filename, a.contentType, a.sizeBytes, cast(a.storageProvider as string),
-        a.storageKey, null, a.uploadedByUserId, a.createdAt
+        a.storageKey, null, a.uploadedByUserId, u.displayName, a.createdAt
     ) from Attachment a left join AppUser u on u.id = a.uploadedByUserId
     where a.id.tenantId = :tenantId and a.ticketId = :ticketId and a.deletedAt is null
     """)

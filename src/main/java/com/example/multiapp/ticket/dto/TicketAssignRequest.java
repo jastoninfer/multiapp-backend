@@ -6,4 +6,4 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record TicketAssignRequest(
-        @NotBlank @NotNull UUID newAssigneeId) {}
+        @NotNull UUID newAssigneeId) {}

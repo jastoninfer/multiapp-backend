@@ -1,0 +1,13 @@
+.git
+.idea
+.vscode
+target
+*.iml
+.DS_Store
+
+.env*
+!.env.demo-prod.example
+
+docs
+keycloak-export
+${app.upload.dir

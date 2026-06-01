@@ -7,7 +7,9 @@ import com.example.multiapp.membership.dto.CreateMemberRequest;
 import com.example.multiapp.membership.dto.MemberUserInfo;
 import com.example.multiapp.membership.dto.MembershipCreatedResponse;
 import com.example.multiapp.membership.dto.UpdateMemberRequest;
+import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.membership.service.TenantMembershipService;
+import jakarta.annotation.Nullable;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -33,12 +35,12 @@ public class TenantMembershipController {
 
     @GetMapping
     public PageResponse<MemberUserInfo> listMembers(
-            @Size(max=200)
-            @RequestParam(required = false) String q,
+            @RequestParam(name = "role", required = false) MembershipRole role,
+            @Size(max=200) @RequestParam(name = "q", required = false) String q,
             @PageableDefault(value = 20) Pageable pageable,
             HttpServletRequest req) {
         RequestContext ctx = RequestContexts.require(req);
-        return PageResponse.from(membershipService.listMembers(ctx, q, pageable));
+        return PageResponse.from(membershipService.listMembers(ctx, role, q, pageable));
     }
 
     @GetMapping("/{userId}")

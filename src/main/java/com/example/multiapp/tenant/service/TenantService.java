@@ -4,6 +4,7 @@ import com.example.multiapp.audit.entity.AuditLog;
 import com.example.multiapp.audit.repo.AuditLogRepository;
 import com.example.multiapp.common.aduit.AuditPayloadBuilder;
 import com.example.multiapp.common.aduit.AuditWriter;
+import com.example.multiapp.common.api.ForbiddenException;
 import com.example.multiapp.common.api.NotFoundException;
 import com.example.multiapp.common.api.PageNormalizer;
 import com.example.multiapp.common.crypto.Hashing;
@@ -36,6 +37,7 @@ import com.example.multiapp.tenant.repo.TenantRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.env.Environment;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -61,6 +63,7 @@ public class TenantService {
 //    private final IdempotencyRecordRepository idemRepo;
 //    private final OutboxEventService outboxService;
     private final OutboxPublisher outboxPublisher;
+    private final Environment env;
     // 查看租户详情, 只有属于该租户的成员以及超级管理员才有权限查看
     // 不保证结果存在
     @Transactional(readOnly = true)
@@ -86,17 +89,17 @@ public class TenantService {
 //        tenantAuth.requireCreate(ctx);
         final String requestHash = Hashing.sha256Hex(req.toStableString());
         Tenant tenant = Tenant.create(req.name());
-        final UUID tenantId = tenant.getId();
+//        final UUID tenantId = tenant.getId();
         final UUID actorUserId = ctx.userId();
         if(tenantRepo.existsByNameCi(tenant.getName()))
             throw new DataIntegrityViolationException("Tenant name taken");
-        final IdempotencyId idemId = new IdempotencyId(tenantId, actorUserId, idemKey);
+//        final IdempotencyId idemId = new IdempotencyId(tenantId, actorUserId, idemKey);
         // 插入失败, 但有缓存才有返回值
-        Optional<TenantResponse> cached = idemService.tryInsert(tenantId, actorUserId, idemKey,
+        Optional<TenantResponse> cached = idemService.tryInsert(ctx.tenantId(), actorUserId, idemKey,
                         requestHash, TenantResponse.class);
         if(cached.isPresent()) return cached.get();
         tenantRepo.save(tenant);
-        AuditLog auditLog = AuditLog.tenantCreated(tenantId, actorUserId, ctx.requestId());
+        AuditLog auditLog = AuditLog.tenantCreated(ctx.tenantId(), actorUserId, ctx.requestId());
         auditWriter.append(auditLog);
 //        auditRepo.save();
         // 更新outbox, dedupKey包含actor+eventType
@@ -108,7 +111,7 @@ public class TenantService {
         // 暂时不做tenant表本身的幂等
         TenantResponse resp = TenantResponse.from(tenant);
 //        String respJson = codec.write(resp);
-        idemService.tryComplete(tenantId, actorUserId, idemKey, requestHash, resp);
+        idemService.tryComplete(ctx.tenantId(), actorUserId, idemKey, requestHash, resp);
         return resp;
     }
 
@@ -125,16 +128,28 @@ public class TenantService {
     // 暂不考虑并发控制
     // 调整租户状态
     @Transactional
-    public TenantResponse transition(RequestContext ctx, TenantStatus toStatus) {
+    public TenantResponse transition(RequestContext ctx, UUID targetTenantId, TenantStatus toStatus) {
         Objects.requireNonNull(ctx, "ctx");
-        UUID tenantId = ctx.tenantId();
+        UUID requestTenantId = ctx.tenantId();
+        UUID tenantId = targetTenantId != null ? targetTenantId : requestTenantId;
         Objects.requireNonNull(ctx.requestId(), "ctx.requestId");
+        Objects.requireNonNull(requestTenantId, "requestTenantId");
         Objects.requireNonNull(tenantId, "tenantId");
         Objects.requireNonNull(toStatus, "toStatus");
 //        tenantAuth.requireChangeStatus(ctx);
         tenantAuth.require(ctx, TenantAction.CHANGE_STATUS);
+        Tenant requestTenant = tenantRepo.findById(requestTenantId).
+                orElseThrow(() -> new NotFoundException("Tenant not found"));
+        if(!requestTenant.getName().equals(env.getProperty("app.platform.admin.tenant",
+                "__platform_admin"))) {
+            throw new ForbiddenException("tenant status changes must use platform admin tenant context");
+        }
         Tenant tenant = tenantRepo.findById(tenantId).
                 orElseThrow(() -> new NotFoundException("Tenant not found"));
+        if(tenant.getName().equals(env.getProperty("app.platform.admin.tenant",
+                "__platform_admin"))) {
+            throw new ForbiddenException("cannot change status of platform admin tenant");
+        }
         TenantStatus fromStatus = Objects.requireNonNull(tenant.getStatus(), "tenant.status");
         if(fromStatus == toStatus) {
             return TenantResponse.from(tenant);
@@ -145,7 +160,7 @@ public class TenantService {
                 .addField("status", fromStatus.name(), toStatus.name()).build();
 //        JsonNode payload = DomainEventPayloads.envelop(tenantId, ctx.userId(), ctx.requestId(),
 //                1, payloadData);
-        AuditLog auditLog = AuditLog.tenantStatusChanged(tenantId,
+        AuditLog auditLog = AuditLog.tenantStatusChanged(ctx.tenantId(),
                 ctx.userId(), DomainEventPayloads.envelopFrom(ctx, tenantId, payloadData),
                 ctx.requestId());
 //        auditRepo.save();
@@ -170,6 +185,10 @@ public class TenantService {
 //        tenantAuth.require(ctx, tenantId, TenantAction.UPDATE);
         Tenant tenant = tenantRepo.findById(tenantId).
                 orElseThrow(() -> new NotFoundException("Tenant not found"));
+        if(tenant.getName().equals(env.getProperty("app.platform.admin.tenant",
+                "__platform_admin"))) {
+            throw new ForbiddenException("cannot update platform admin tenant");
+        }
         DomainEventType eventType = TenantEventType.TENANT_UPDATED;
         AuditPayloadBuilder payloadBuilder = AuditPayloadBuilder.forEntity(tenantId,
                 eventType);

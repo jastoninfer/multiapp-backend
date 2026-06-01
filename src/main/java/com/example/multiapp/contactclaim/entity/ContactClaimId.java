@@ -12,7 +12,6 @@ import java.util.UUID;
 @Embeddable
 @Getter @EqualsAndHashCode
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public class ContactClaimId implements Serializable {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;

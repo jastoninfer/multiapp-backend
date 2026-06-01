@@ -20,6 +20,7 @@ import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.common.web.IfMatchPreconditions;
 import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.outbox.entity.OutboxEvent;
+import com.example.multiapp.user.service.UserGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -27,7 +28,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,7 +45,9 @@ public class AppointmentService {
     private final AppointmentAuthorizer appointmentAuth;
     private final AuditWriter auditWriter;
     private final OutboxPublisher outboxPublisher;
+    private final UserGuard userGuard;
     private final AvailabilityValidator availabilityValidator;
+    private final AppointmentReader appointmentReader;
 
     @Transactional
     public AppointmentCreatedResponse createForTicket(
@@ -58,15 +60,17 @@ public class AppointmentService {
         validateAppointmentDuration(req.startAt(), req.endAt());
         availabilityValidator.validate(ctx.tenantId(), req.resourceUserId(), req.startAt(), req.endAt());
         DomainEventType eventType = AppointmentEventType.APPOINTMENT_CREATED;
+        userGuard.requireActiveUser(req.customerUserId());
+        userGuard.requireActiveUser(req.resourceUserId());
         Appointment a = Appointment.from(ctx.tenantId(), ticketId, req);
         appointmentRepo.save(a);
         UUID appointmentId = a.getId().getId();
         JsonNode payloadData = AuditPayloadBuilder.forEntity(appointmentId, eventType)
-                .addField("resourceUserId", null, a.getResourceUserId().toString())
-                .addField("customerUserId", null, a.getCustomerUserId().toString())
-                .addField("customerContactId", null, a.getCustomerContactId().toString())
-                .addField("startAt", null, a.getStartAt().toString())
-                .addField("endAt", null, a.getEndAt().toString())
+                .addField("resourceUserId", null, a.getResourceUserId())
+                .addField("customerUserId", null, a.getCustomerUserId())
+                .addField("customerContactId", null, a.getCustomerContactId())
+                .addField("startAt", null, a.getStartAt())
+                .addField("endAt", null, a.getEndAt())
                 .addField("addressText", null, a.getAddressText())
                 .addField("notes", null, a.getNotes())
                 .build();
@@ -85,25 +89,43 @@ public class AppointmentService {
         appointmentAuth.requireSearch(ctx, query);
         Pageable pageable = PageNormalizer.normalize(p, 40, 20, Sort.by(
                 Sort.Order.desc("startAt"), Sort.Order.desc("id.id")),
-                Set.of("startAt", "id.id", "endAt", "status", "ticketId", "resourceUserId",
-                        "customerUserId", "customerContactId"));
+                Set.of("startAt", "id.id", "endAt", "status", "resourceUserId"));
         // agent/admin/resourceUser
         UUID tenantId = ctx.tenantId();
-        return ctx.role() == MembershipRole.RESOURCE_USER ?
-                appointmentRepo.searchAsResourceUser(tenantId, ctx.userId(), query, pageable)
-                : appointmentRepo.search(tenantId, query, pageable);
+        AppointmentQuery effectiveQuery = ctx.role() == MembershipRole.RESOURCE_USER ?
+                query.withResourceUserId(ctx.userId()) :
+                (ctx.role() == MembershipRole.AGENT ? query.withTicketOwnerId(ctx.userId()) :
+                        query);
+        return appointmentRepo.search(tenantId, toSearchQuery(effectiveQuery), pageable);
+//        return ctx.role() == MembershipRole.RESOURCE_USER ?
+//                appointmentRepo.searchAsResourceUser(tenantId, ctx.userId(), query, pageable)
+//                : appointmentRepo.search(tenantId, query, pageable);
+    }
+
+    private AppointmentSearchQuery toSearchQuery(AppointmentQuery query) {
+        return new AppointmentSearchQuery(
+                query.resourceUserId(),
+                query.ticketOwnerId(),
+                query.ticketId(),
+                query.from(),
+                query.to(),
+                query.status() == null ? null : query.status().name()
+        );
     }
 
     @Transactional(readOnly = true)
     public AppointmentDetailResponse get(RequestContext ctx, UUID appointmentId) {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(appointmentId, "appointmentId");
-        appointmentAuth.requireRead(ctx, appointmentId);
+        appointmentAuth.requireRead(ctx);
         // resourceUserId只能查看自己的
         Optional<AppointmentDetailResponse> resp = ctx.role() == MembershipRole.RESOURCE_USER ?
                 appointmentRepo.findDetailByTenantIdAndIdIdAndResourceUserId(
                         ctx.tenantId(), appointmentId, ctx.userId()) :
-                appointmentRepo.findDetailByTenantIdAndIdId(ctx.tenantId(), appointmentId);
+                (ctx.role() == MembershipRole.AGENT ?
+                        appointmentRepo.findDetailByTenantIdAndIdIdAndTicketOwnerId(ctx.tenantId(),
+                                appointmentId, ctx.userId()) :
+                        appointmentRepo.findDetailByTenantIdAndIdId(ctx.tenantId(), appointmentId));
         return resp.orElseThrow(() -> new NotFoundException("appointment not found"));
     }
 
@@ -117,10 +139,14 @@ public class AppointmentService {
         Appointment a = appointmentRepo.findByIdTenantIdAndIdId(ctx.tenantId(), appointmentId)
                         .orElseThrow(() -> new NotFoundException("appointment: [%s] not found".
                                 formatted(appointmentId)));
+        // 可见性是进行下一步的必要条件
+//        appointmentReader.requireVisible(ctx, a);
         IfMatchPreconditions.require(ifMatch, a.getVersion());
-        appointmentAuth.requireUpdate(ctx, appointmentId, req);
+        appointmentAuth.requireUpdate(ctx, a, req);
         DomainEventType eventType = AppointmentEventType.APPOINTMENT_UPDATED;
         AuditPayloadBuilder builder = AuditPayloadBuilder.forEntity(appointmentId, eventType);
+
+
         // 逐字段检查
         boolean updated = false;
         // status, startAt, endAt, addressText, notes, arrivedAt

@@ -12,6 +12,9 @@ public final class IfMatchPreconditions {
         // If-Match: *表示 "只要资源存在即可"
         if("*".equals(v)) return;
         String expected = "\"" + version + "\"";
+//        System.out.println("expected: " + expected);
+//        System.out.printf("v: " + v);
+//        System.out.printf(expected.equals(v) ? "true" : "false");
         if(!expected.equals(v)) {
             throw new PreconditionFailedException("Etag mismatch");
         }

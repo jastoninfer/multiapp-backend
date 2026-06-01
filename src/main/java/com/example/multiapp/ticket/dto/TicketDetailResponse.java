@@ -28,6 +28,7 @@ import com.example.multiapp.common.api.dto.SliceBlock;
 
 public record TicketDetailResponse(
         TicketResponse ticket,
+        Boolean isManagedAsResourceUser,
         SliceBlock<AppointmentSummary> upcomingAppointments,
         SliceBlock<AppointmentSummary> recentPastAppointments,
         SliceBlock<CommentSummary> comments,

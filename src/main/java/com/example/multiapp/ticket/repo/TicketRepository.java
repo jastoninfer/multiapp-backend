@@ -1,10 +1,9 @@
 package com.example.multiapp.ticket.repo;
 
-import com.example.multiapp.ticket.dto.TicketQuery;
 import com.example.multiapp.ticket.dto.TicketResponse;
+import com.example.multiapp.ticket.dto.TicketSearchQuery;
 import com.example.multiapp.ticket.entity.Ticket;
 import com.example.multiapp.ticket.entity.TicketId;
-import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,13 +11,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.UUID;
 
 public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
 //    Page<Ticket> findByIdTenantId(UUID tenantId, Pageable pageable);
+    boolean existsByIdTenantIdAndIdIdAndOwnerUserId(UUID tenantId, UUID id, UUID ownerUserId);
     String SELECT_TICKET_RESPONSE = """
-    select new com.example.ticket.api.dto.TicketResponse(
+    select new com.example.multiapp.ticket.dto.TicketResponse(
         t.id.id,
         t.ticketNo,
         t.version,
@@ -29,14 +28,21 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
         owner.displayName,
         t.requesterUserId,
         t.requesterContactId,
+        reqContact.linkedUserId,
         coalesce(reqUser.displayName, reqContact.displayName),
+        t.createdByUserId,
+        createdByUser.displayName,
         t.title,
+        t.description,
+        t.locationText,
+        t.firstResponseAt,
+        t.closedAt,
         t.createdAt,
         t.updatedAt,
         (select count(cm) from Comment cm
-            where cm.tenantId = :tenantId and cm.ticketId = t.id.id),
+            where cm.id.tenantId = :tenantId and cm.ticketId = t.id.id),
         (select count(att) from Attachment att
-            where att.tenantId = :tenantId and att.ticketId = t.id.id),
+            where att.id.tenantId = :tenantId and att.ticketId = t.id.id),
         (select min(a.startAt) from Appointment a
             where a.id.tenantId = :tenantId
                 and a.ticketId = t.id.id
@@ -46,29 +52,31 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
     from Ticket t
     left join AppUser owner on owner.id = t.ownerUserId
     left join AppUser reqUser on reqUser.id = t.requesterUserId
-    left join Contact reqContact on reqContact.id.tenantId =: tenantId and reqContact.id.id = t.requesterContactId
+    left join AppUser createdByUser on createdByUser.id = t.createdByUserId
+    left join Contact reqContact on reqContact.id.tenantId = :tenantId and reqContact.id.id = t.requesterContactId
     """;
 
     String OPTIONAL_FILTERS = """
-    and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-    and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-    and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-    and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-    and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-    and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-    and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-    and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
+    and (:#{#q.ticketStatus == null} = true or cast(t.status as string) = :#{#q.ticketStatus})
+    and (:#{#q.ticketPriority == null} = true or cast(t.priority as string) = :#{#q.ticketPriority})
+    and (:#{#q.ownerId == null} = true or t.ownerUserId = :#{#q.ownerId})
+    and (:#{#q.ticketType == null} = true or cast(t.ticketType as string) = :#{#q.ticketType})
+    and (:#{#q.createdFrom == null} = true or t.createdAt >= :#{#q.createdFrom})
+    and (:#{#q.createdTo == null} = true or t.createdAt <= :#{#q.createdTo})
+    and (:#{#q.q == null} = true or (lower(t.title) like concat('%', lower(:#{#q.q}), '%')))
+    and (:#{#q.requesterUserId == null} = true or t.requesterUserId = :#{#q.requesterUserId})
+    and (:#{#q.requesterContactId == null} = true or t.requesterContactId = :#{#q.requesterContactId})
     """;
 
     // Admin: tenant内所有ticket
     @Query(value = SELECT_TICKET_RESPONSE  + """
         where t.id.tenantId = :tenantId
         """ + OPTIONAL_FILTERS, countQuery = """
-        select count(t) from Ticket t where t.id.tenantId =: tenantId
+        select count(t) from Ticket t where t.id.tenantId = :tenantId
     """ + OPTIONAL_FILTERS)
     Page<TicketResponse> findForAdminResponse(
             @Param("tenantId") UUID tenantId,
-            @Param("q") TicketQuery q,
+            @Param("q") TicketSearchQuery q,
             Pageable pageable
     );
 
@@ -100,7 +108,7 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
     Page<TicketResponse> findForCustomerResponse(
             @Param("tenantId") UUID tenantId,
             @Param("userId") UUID userId,
-            @Param("q") TicketQuery q,
+            @Param("q") TicketSearchQuery q,
             Pageable pageable
     );
 
@@ -145,7 +153,7 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
     Page<TicketResponse> findForResourceUserResponse(
             @Param("tenantId") UUID tenantId,
             @Param("userId") UUID userId,
-            @Param("q") TicketQuery q,
+            @Param("q") TicketSearchQuery q,
             Pageable pageable
     );
 
@@ -154,6 +162,7 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
         where t.id.tenantId = :tenantId
             and (
                 t.ownerUserId = :userId
+                    or t.createdByUserId = :userId
                     or t.requesterUserId = :userId
                     or exists (
                         select 1 from Contact c
@@ -168,6 +177,7 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
             where t.id.tenantId = :tenantId
                 and (
                     t.ownerUserId = :userId
+                        or t.createdByUserId = :userId
                         or t.requesterUserId = :userId
                         or exists (
                             select 1 from Contact c
@@ -180,7 +190,7 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
     Page<TicketResponse> findForAgentResponse(
       @Param("tenantId") UUID tenantId,
       @Param("userId") UUID userId,
-      @Param("q") TicketQuery q,
+      @Param("q") TicketSearchQuery q,
       Pageable pageable
     );
 
@@ -198,31 +208,9 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
     @Query(value = """
     select t
         from Ticket t
-        where t.id.tenantId =:tenantId
+        where t.id.tenantId = :tenantId
             and (
-                t.requesterUserId =: userId
-                    or exists (
-                        select 1
-                            from Contact c
-                            where c.id.tenantId =: tenantId
-                                and c.id.id = t.requesterContactId
-                                and c.linkedUserId = :userId
-                    )
-            )
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """, countQuery = """
-    select count(t)
-        from Ticket t
-        where t.id.tenantId =:tenantId
-            and (
-                t.requesterUserId =: userId
+                t.requesterUserId = :userId
                     or exists (
                         select 1
                             from Contact c
@@ -231,17 +219,23 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
                                 and c.linkedUserId = :userId
                     )
             )
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """)
+    """ + OPTIONAL_FILTERS, countQuery = """
+    select count(t)
+        from Ticket t
+        where t.id.tenantId = :tenantId
+            and (
+                t.requesterUserId = :userId
+                    or exists (
+                        select 1
+                            from Contact c
+                            where c.id.tenantId = :tenantId
+                                and c.id.id = t.requesterContactId
+                                and c.linkedUserId = :userId
+                    )
+            )
+    """ + OPTIONAL_FILTERS)
     Page<Ticket> findForCustomer(@Param("tenantId") UUID tenantId, @Param("userId") UUID userId,
-                                 @Param("q")TicketQuery q, Pageable pageable);
+                                 @Param("q") TicketSearchQuery q, Pageable pageable);
 
 
     @Query(value = """
@@ -265,15 +259,7 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
                                 and a.ticketId = t.id.id
                     )
             )
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """, countQuery = """
+    """ + OPTIONAL_FILTERS, countQuery = """
     select count(t)
         from Ticket t
         where t.id.tenantId = :tenantId
@@ -294,93 +280,53 @@ public interface TicketRepository extends JpaRepository<Ticket, TicketId> {
                                 and a.ticketId = t.id.id
                     )
             )
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """)
+    """ + OPTIONAL_FILTERS)
     Page<Ticket> findForResourceUser(@Param("tenantId") UUID tenantId, @Param("userId") UUID userId,
-                                     @Param("q") TicketQuery q, Pageable pageable);
+                                     @Param("q") TicketSearchQuery q, Pageable pageable);
 
     @Query(value = """
     select t
         from Ticket t
-        where t.id.tenantId =:tenantId
+        where t.id.tenantId = :tenantId
             and (
-                t.requesterUserId =: userId
+                t.requesterUserId = :userId
                     or exists (
                         select 1
                             from Contact c
-                            where c.id.tenantId =: tenantId
+                            where c.id.tenantId = :tenantId
                                 and c.id.id = t.requesterContactId
                                 and c.linkedUserId = :userId
                     )
                     or t.ownerUserId = :userId
             )
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """, countQuery = """
+    """ + OPTIONAL_FILTERS, countQuery = """
     select count(t)
         from Ticket t
-        where t.id.tenantId =:tenantId
+        where t.id.tenantId = :tenantId
             and (
-                t.requesterUserId =: userId
+                t.requesterUserId = :userId
                     or exists (
                         select 1
                             from Contact c
-                            where c.id.tenantId =: tenantId
+                            where c.id.tenantId = :tenantId
                                 and c.id.id = t.requesterContactId
                                 and c.linkedUserId = :userId
                     )
                     or t.ownerUserId = :userId
             )
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """)
+    """ + OPTIONAL_FILTERS)
     Page<Ticket> findForAgent(@Param("tenantId") UUID tenantId, @Param("userId") UUID userId,
-                                     @Param("q") TicketQuery q, Pageable pageable);
+                                     @Param("q") TicketSearchQuery q, Pageable pageable);
 
     @Query(value = """
     select t
         from Ticket t
-        where t.id.tenantId =:tenantId
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """, countQuery = """
+        where t.id.tenantId = :tenantId
+    """ + OPTIONAL_FILTERS, countQuery = """
     select count(t)
         from Ticket t
-        where t.id.tenantId =:tenantId
-            and (:#{#q.ticketStatus} is null or t.status = :#{#q.ticketStatus})
-            and (:#{#q.ticketPriority} is null or t.priority = :#{#q.ticketPriority})
-            and (:#{#q.ownerId} is null or t.ownerUserId = :#{#q.ownerId})
-            and (:#{#q.ticketType} is null or t.ticketType = :#{#q.ticketType})
-            and (:#{#q.createdFrom} is null or t.createdAt >= :#{#q.createdFrom})
-            and (:#{#q.createdTo} is null or t.createdAt <= :#{#q.createdTo})
-            and (:#{#q.requesterUserId} is null or t.requesterUserId = :#{#q.requesterUserId})
-            and (:#{#q.requesterContactId} is null or t.requesterContactId = :#{#q.requesterContactId})
-    """)
+        where t.id.tenantId = :tenantId
+    """ + OPTIONAL_FILTERS)
     Page<Ticket> findForAdmin(@Param("tenantId") UUID tenantId, @Param("userId") UUID userId,
-                              @Param("q") TicketQuery q, Pageable pageable);
+                              @Param("q") TicketSearchQuery q, Pageable pageable);
 }

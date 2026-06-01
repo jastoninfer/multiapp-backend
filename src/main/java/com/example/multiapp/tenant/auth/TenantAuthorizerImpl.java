@@ -4,7 +4,7 @@ import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.membership.repo.TenantMembershipRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import com.example.multiapp.common.api.ForbiddenException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +22,7 @@ public class TenantAuthorizerImpl implements TenantAuthorizer{
         switch (action) {
             case CREATE, LIST, CHANGE_STATUS -> {
                 if(!ctx.isPlatformAdmin())
-                    throw new AccessDeniedException("Access denied: action=%s".formatted(action));
+                    throw new ForbiddenException("Access denied: action=%s".formatted(action));
             }
             default -> throw new IllegalArgumentException("Unhandled action: " + action);
         }
@@ -46,7 +46,9 @@ public class TenantAuthorizerImpl implements TenantAuthorizer{
             }
             default -> throw new IllegalArgumentException("Unhandled action: " + action);
         }
-        throw new AccessDeniedException("Access denied: action=%s tenantId=%s".
+        throw new ForbiddenException("Access denied: action=%s tenantId=%s".
                 formatted(action, payload.tenantId()));
     }
+
+
 }

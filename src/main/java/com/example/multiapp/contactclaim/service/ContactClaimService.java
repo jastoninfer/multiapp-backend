@@ -5,6 +5,7 @@ import com.example.multiapp.audit.model.AuditEntityType;
 import com.example.multiapp.common.aduit.AuditPayloadBuilder;
 import com.example.multiapp.common.aduit.AuditWriter;
 import com.example.multiapp.common.api.ConflictException;
+import com.example.multiapp.common.api.ForbiddenException;
 import com.example.multiapp.common.api.NotFoundException;
 import com.example.multiapp.common.crypto.Hashing;
 import com.example.multiapp.common.event.DomainEventPayloads;
@@ -20,10 +21,11 @@ import com.example.multiapp.contactclaim.dto.ClaimResult;
 import com.example.multiapp.contactclaim.entity.ContactClaim;
 import com.example.multiapp.contactclaim.model.ContactClaimEventType;
 import com.example.multiapp.contactclaim.repo.ContactClaimRepository;
+import com.example.multiapp.membership.entity.TenantMembership;
+import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.membership.repo.TenantMembershipRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -56,6 +58,7 @@ public class ContactClaimService {
         // 如已有有效claim, 直接拒绝或复用(建议拒绝并提示)
         contactClaimRepo.findLatestActiveByContact(tenantId, contactId).ifPresent(
                 existing -> {
+                    // 也可以考虑直接返回已有的code, 这里直接弹出错误
                     throw new ConflictException("active claim already exists");
                 }
         );
@@ -76,7 +79,7 @@ public class ContactClaimService {
         contactClaimAuth.requireConsumeClaim(ctx);
         String hashed = Hashing.sha256Hex(req.code().strip());
         // select for update 锁行
-        ContactClaim claim = contactClaimRepo.findActiveByCodeHashForUpdate(hashed)
+        ContactClaim claim = contactClaimRepo.findActiveByCodeHashForUpdate(ctx.tenantId(), hashed)
                 .orElseThrow(() -> new NotFoundException("claim not found"));
         UUID tenantId = claim.getId().getTenantId();
         UUID contactId = claim.getContactId();
@@ -91,10 +94,15 @@ public class ContactClaimService {
         // 校验email/phone 匹配contact, 至少传一个, 传了就必须匹配
         boolean matched = req.email() == null || req.email().equals(contact.getEmail());
         if(req.phone() != null && !req.phone().equals(contact.getPhone())) matched = false;
-        if(!matched) throw new AccessDeniedException("claim identity mismatch");
+        if(!matched) throw new ForbiddenException("claim identity mismatch");
         // 绑定contact
         if(linked == null) {
             contact.setLinkedUserId(ctx.userId());
+            // 可能进行的tenant扩充
+            if(!membershipRepo.existsByIdTenantIdAndIdUserId(tenantId, ctx.userId())) {
+                membershipRepo.save(TenantMembership.create(tenantId, ctx.userId(),
+                        MembershipRole.CUSTOMER, false));
+            }
 //            contactRepo.save(contact);
             JsonNode payloadData = AuditPayloadBuilder.forEntity(contactId,
                     ContactClaimEventType.CONTACT_CLAIMED).addField("linked_to",

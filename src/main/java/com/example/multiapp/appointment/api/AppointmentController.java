@@ -24,8 +24,8 @@ import java.util.UUID;
 
 
 @Validated
-@RestController("/appointments")
-@RequestMapping
+@RequestMapping("/appointments")
+@RestController
 @RequiredArgsConstructor
 public class AppointmentController {
     private final AppointmentService appointmentService;

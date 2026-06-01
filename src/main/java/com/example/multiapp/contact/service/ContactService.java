@@ -25,6 +25,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -74,8 +75,10 @@ public class ContactService {
                 Sort.Order.desc("createdAt"), Sort.Order.desc("id.id")),
                 Set.of("createdAt", "id.id", "displayName", "phone", "email", "contactType",
                         "linkedUserId", "createdByUserId"));
+        Pageable nativePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         UUID tenantId = ctx.tenantId();
-        return contactRepo.searchContacts(tenantId, q, pageable).map(ContactResponse::from);
+//        return contactRepo.searchContacts(tenantId, q, pageable);
+        return contactRepo.searchContacts(tenantId, q, nativePageable);
     }
 
     @Transactional(readOnly = true)
@@ -84,9 +87,9 @@ public class ContactService {
         Objects.requireNonNull(contactId, "contactId");
         contactAuth.requireRead(ctx);
         UUID tenantId = ctx.tenantId();
-        return ContactResponse.from(contactRepo.findByIdTenantIdAndIdId(tenantId, contactId)
+        return contactRepo.findByTenantIdAndId(tenantId, contactId)
                 .orElseThrow(() -> new NotFoundException("contact: [%s] not found under tenant: [%s]"
-                        .formatted(contactId, tenantId))));
+                        .formatted(contactId, tenantId)));
     }
 
     @Transactional
@@ -121,10 +124,12 @@ public class ContactService {
         }
         if(req.phone() != null && !req.phone().equals(contact.getPhone())) {
             builder.addField("phone", contact.getPhone(), req.phone());
+            contact.changePhone(req.phone());
             updated = true;
         }
         if(req.email() != null && !req.email().equals(contact.getEmail())) {
             builder.addField("email", contact.getEmail(), req.email());
+            contact.changeEmail(req.email());
             updated = true;
         }
         if(!updated) return;

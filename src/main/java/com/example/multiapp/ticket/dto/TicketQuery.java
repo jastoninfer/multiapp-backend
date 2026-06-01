@@ -4,6 +4,7 @@ import com.example.multiapp.ticket.model.TicketPriority;
 import com.example.multiapp.ticket.model.TicketStatus;
 import com.example.multiapp.ticket.model.TicketType;
 import jakarta.annotation.Nullable;
+import jakarta.validation.constraints.Size;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -15,6 +16,8 @@ public record TicketQuery(
         @Nullable UUID requesterUserId,
         @Nullable UUID requesterContactId, //requesterUserId+requesterContactId至多一个非null
         @Nullable TicketType ticketType,
+        @Size(max = 25)
+        @Nullable String q,
         @Nullable OffsetDateTime createdFrom, // 创建时间
         @Nullable OffsetDateTime createdTo
         ) {
@@ -25,6 +28,6 @@ public record TicketQuery(
     }
     public static TicketQuery empty() {
         return new TicketQuery(null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 }

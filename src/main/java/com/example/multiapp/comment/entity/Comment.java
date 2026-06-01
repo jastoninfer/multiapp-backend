@@ -37,7 +37,7 @@ public class Comment extends AuditedEntity {
     private UUID authorUserId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "visbility", nullable = false)
+    @Column(name = "visibility", nullable = false)
     private CommentVisibility visibility;
 
     @Column(name = "body", nullable = false)

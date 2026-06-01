@@ -29,9 +29,11 @@ import com.example.multiapp.tenant.repo.TenantRepository;
 import com.example.multiapp.user.entity.AppUser;
 import com.example.multiapp.user.model.UserStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.env.Environment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -47,7 +49,8 @@ public class TenantMembershipService {
     private final TenantRepository tenantRepo;
     private final MembershipAuthorizer memberAuth;
     private final IdempotencyService idemService;
-    private final String PLATFORM_ADMIN_TENANT = "platform_admin";
+//    private final String PLATFORM_ADMIN_TENANT = "_platform_admin";
+    private final Environment env;
     private final UserReader userReader;
     private final AuditWriter auditWriter;
     private final OutboxPublisher outboxPublisher;
@@ -55,20 +58,29 @@ public class TenantMembershipService {
     public void ensurePlatformAdminTenant(AppUser user) {
         Objects.requireNonNull(user, "user");
         if(!user.isPlatformAdmin()) return;
-        UUID tenantId = tenantRepo.findByNameCi(PLATFORM_ADMIN_TENANT).orElseThrow(
-                () -> new IllegalStateException("platform admin tenant doesn't exist")).getId();
+        UUID tenantId = tenantRepo
+                .findByNameCi(
+                        env.getProperty("app.platform.admin.tenant","__platform_admin"))
+                .orElseThrow(() -> new IllegalStateException("platform admin tenant doesn't exist"))
+                .getId();
         UUID userId = user.getId();
-        if (!membershipRepo.existsByIdTenantIdAndIdUserId(tenantId, userId)) {
-            membershipRepo.save(TenantMembership.create(tenantId, userId,
-                    MembershipRole.ADMIN, false));
-        }
+//        if (!membershipRepo.existsByIdTenantIdAndIdUserId(tenantId, userId)) {
+//            // 还是要考虑并发
+//
+//            membershipRepo.save(TenantMembership.create(tenantId, userId,
+//                    MembershipRole.ADMIN, false));
+//        }
+        membershipRepo.insertIgnore(tenantId, userId, MembershipRole.ADMIN.name());
     }
 
     // 列出当前租户成员, q 可以匹配user的displayName/email
     @Transactional(readOnly = true)
-    public Page<MemberUserInfo> listMembers(RequestContext ctx, String q, Pageable pageable) {
+    public Page<MemberUserInfo> listMembers(RequestContext ctx, @Nullable MembershipRole role, String q, Pageable pageable) {
         Objects.requireNonNull(ctx, "ctx");
-        memberAuth.require(ctx, MembershipAction.LIST);
+//        memberAuth.require(ctx, MembershipAction.LIST);
+        memberAuth.requireList(ctx);
+        // 首先尝试将role匹配到某个Role(Enum)
+//        String roleName = role == null ? null : role.name();
         // 权限控制, 只有tenant ADMIN + platform ADMIN才有权限做这个查询
         Pageable p = PageNormalizer.normalize(pageable, 100, 20,
                 Sort.by(Sort.Order.desc("isDefault"), Sort.Order.desc("createdAt"),
@@ -76,10 +88,10 @@ public class TenantMembershipService {
                 Set.of("isDefault", "createdAt", "id.userId"));
         Page<MemberUserInfo> page;
         if(q == null || q.isBlank()) {
-            page = membershipRepo.listMembers(ctx.tenantId(), p);
+            page = membershipRepo.listMembers(ctx.tenantId(), role, p);
         } else {
-            String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
-            page = membershipRepo.searchMembers(ctx.tenantId(), q, p);
+            String like = "%" + q.strip().toLowerCase(Locale.ROOT) + "%";
+            page = membershipRepo.searchMembers(ctx.tenantId(), role, like, p);
         }
         return page;
     }
@@ -125,8 +137,9 @@ public class TenantMembershipService {
 //                1, payloadData);
         // 由于暂未开启应用层审计(@EnableJpaAuditing + @CreatedDate/@LastModifiedDate),
         // 因此这里save返回的membership可能依旧是没有created_at, updated_at
+        // 先忽略req.isDefault()参数必然插入失败, 如果要更改default租户, 可交给后续
         TenantMembership membership =  membershipRepo.save(TenantMembership.create(
-                tenantId, userId, req.role(), req.isDefault()));
+                tenantId, userId, req.role(), false));
         AuditLog auditLog = AuditLog.from(ctx, AuditEntityType.MEMBERSHIP, entityId, eventType,
                 DomainEventPayloads.envelopFrom(ctx, entityId, payloadData));
 //        AuditLog auditLog = AuditLog.of(tenantId, ctx.userId(), AuditEntityType.MEMBERSHIP, entityId,
@@ -149,6 +162,10 @@ public class TenantMembershipService {
         Objects.requireNonNull(tenantId, "tenantId");
         Objects.requireNonNull(req, "req");
         memberAuth.require(ctx, MembershipAction.UPDATE, userId, UUID.class);
+        // 不能修改自己
+        if(ctx.userId().equals(userId)) {
+            throw new IllegalStateException("cannot update yourself's role");
+        }
         TenantMembership membership = membershipRepo.findByIdTenantIdAndIdUserId(tenantId, userId)
                 .orElseThrow(() -> new NotFoundException("user not found"));
         IfMatchPreconditions.require(ifMatch, membership.getVersion());
@@ -162,8 +179,8 @@ public class TenantMembershipService {
         if (!Objects.isNull(targetRole) && fromRole != targetRole) {
             if (fromRole == MembershipRole.ADMIN) {
                 // 降级
-                long activeAdmins = membershipRepo.countActiveMembersByRole(userId, tenantId, MembershipRole.ADMIN,
-                        UserStatus.DISABLED);
+                long activeAdmins = membershipRepo.countActiveMembersByRole(tenantId,
+                        MembershipRole.ADMIN.name(), UserStatus.DISABLED.name());
                 if (activeAdmins == 1) {
                    throw new ConflictException("Cannot remove/demote/disable the last ADMIN of the tenant");
                 }
@@ -198,10 +215,17 @@ public class TenantMembershipService {
                 .orElseThrow(() -> new NotFoundException("user not found"));
         IfMatchPreconditions.require(ifMatch, membership.getVersion());
         // 注意业务规则, 禁止移除最后一个租户管理员(一个租户管理员不能从>0变为0)
-        long activeAdmins = membershipRepo.countActiveMembersByRole(userId, tenantId, MembershipRole.ADMIN,
-                UserStatus.DISABLED);
+        // 不能删除你自己
+        if(ctx.userId().equals(userId)) {
+            throw new IllegalArgumentException("cannot delete yourself's role");
+        }
+        long activeAdmins = membershipRepo.countActiveMembersByRole(tenantId,
+                MembershipRole.ADMIN.name(), UserStatus.DISABLED.name());
         if (activeAdmins == 1) {
             throw new ConflictException("Cannot remove/demote/disable the last ADMIN of the tenant");
+        }
+        if(true) {
+            throw new IllegalStateException("member deletion function is not open yet");
         }
         membershipRepo.delete(membership);
         DomainEventType eventType = MembershipEventType.MEMBERSHIP_DELETED;

@@ -90,7 +90,7 @@ public class ContactController {
 
     @GetMapping
     public PageResponse<ContactResponse> list(
-            @Valid @NotBlank ContactQuery query,
+            @Valid @NotNull ContactQuery query,
             @PageableDefault(size = 20) Pageable pageable,
             HttpServletRequest req
     ) {

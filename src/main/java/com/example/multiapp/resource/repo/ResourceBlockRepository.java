@@ -16,15 +16,15 @@ public interface ResourceBlockRepository extends JpaRepository<ResourceBlock, Re
     Optional<ResourceBlock> findByIdTenantIdAndIdId(UUID tenantId, UUID id);
     Optional<ResourceBlock> findByIdTenantIdAndIdIdAndResourceUserId(UUID tenantId, UUID id, UUID resourceUserId);
 
-    @Query("""
-    select b from ResourceBlock b
-        where b.id.tenantId = :tenantId
-            and b.resourceUserId = :resourceUserId
-            and b.deletedAt is null
-            and (:from is null or b.endAt > :from)
-            and (:to is null or b.startAt < :to)
-        order by b.startAt asc
-    """)
+    @Query(value = """
+    select * from app.resource_block b
+        where b.tenant_id = :tenantId
+            and b.resource_user_id = :resourceUserId
+            and b.deleted_at is null
+            and (cast(:from as timestamptz) is null or b.end_at > :from)
+            and (cast(:to as timestamptz) is null or b.start_at < :to)
+        order by b.start_at asc
+    """, nativeQuery = true)
     List<ResourceBlock> listInRange(
             @Param("tenantId") UUID tenantId,
             @Param("resourceUserId") UUID resourceUserId,

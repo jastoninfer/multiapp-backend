@@ -5,11 +5,11 @@ import com.example.multiapp.membership.entity.TenantMembership;
 import com.example.multiapp.membership.entity.TenantMembershipId;
 import com.example.multiapp.membership.model.MembershipRole;
 import com.example.multiapp.user.dto.MeTenantResponse;
-import com.example.multiapp.user.model.UserStatus;
 import org.apache.catalina.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.security.core.parameters.P;
@@ -24,6 +24,18 @@ public interface TenantMembershipRepository extends
     boolean existsByIdTenantIdAndIdUserId(UUID tenantId, UUID userId);
     boolean existsByIdTenantIdAndIdUserIdAndRole(UUID tenantId, UUID userId, MembershipRole role);
 
+    @Modifying
+    @Query(value = """
+    insert into app.tenant_membership(tenant_id, user_id, role, is_default)
+    values (:tenantId, :userId, :role, false)
+    on conflict(tenant_id, user_id) do nothing
+    """, nativeQuery = true)
+    int insertIgnore(
+            @Param("tenantId") UUID tenantId,
+            @Param("userId") UUID userId,
+            @Param("role") String role
+    );
+
     @Query(value = """
     select count(*) from(
         select m.tenant_id
@@ -36,18 +48,18 @@ public interface TenantMembershipRepository extends
     """, nativeQuery = true)
     long countTenantsWhereUserIsSoleActiveRole(
             @Param("userId") UUID userId,
-            @Param("role") MembershipRole role,
-            @Param("disabledStatus") UserStatus disabledStatus);
+            @Param("role") String role,
+            @Param("disabledStatus") String disabledStatus);
 
     @Query("""
     select count(m) from TenantMembership  m join AppUser u on u.id = m.id.userId
-        where m.id.userId = :userId and m.id.tenantId = :tenantId
-            and m.role = :role and u.userStatus <> :disabledStatus
+        where m.id.tenantId = :tenantId
+            and cast(m.role as string) = :role and cast(u.userStatus as string) <> :disabledStatus
     """)
     long countActiveMembersByRole(
-            @Param("userId") UUID userId, @Param("tenantId") UUID tenantId,
-            @Param("role") MembershipRole role,
-            @Param("disabledStatus") UserStatus disabledStatus);
+            @Param("tenantId") UUID tenantId,
+            @Param("role") String role,
+            @Param("disabledStatus") String disabledStatus);
 
     @Query("""
     select new com.example.multiapp.membership.dto.MemberUserInfo(
@@ -64,25 +76,33 @@ public interface TenantMembershipRepository extends
             m.isDefault, m.createdAt, m.version
         ) from TenantMembership m join AppUser u on u.id = m.id.userId
             where m.id.tenantId = :tenantId
+                and (:#{#role == null} = true or m.role = :role)
     """, countQuery = """
     select count(m) from TenantMembership m where m.id.tenantId = :tenantId
+        and (:#{#role == null} = true or m.role = :role)
     """)
-    Page<MemberUserInfo> listMembers(@Param("tenantId") UUID tenantId, Pageable pageable);
+    Page<MemberUserInfo> listMembers(@Param("tenantId") UUID tenantId, @Param("role") MembershipRole role,
+                                     Pageable pageable);
 
     @Query(value = """
     select new com.example.multiapp.membership.dto.MemberUserInfo(
         u.id, u.email, u.displayName, cast(m.role as string), cast(u.userStatus as string),
             m.isDefault, m.createdAt, m.version
         ) from TenantMembership m join AppUser u on u.id = m.id.userId
-            where m.id.tenantId = :tenantId and (lower(u.email) like
+            where m.id.tenantId = :tenantId 
+                and (:#{#role == null} = true or m.role = :role)
+                    and (lower(u.email) like
                 :q or lower(u.displayName) like :q)
     """, countQuery = """
     select count(m)
         from TenantMembership m join AppUser u on u.id = m.id.userId
-            where m.id.tenantId = :tenantId and (lower(u.email) like :q or
+            where m.id.tenantId = :tenantId and
+                (:#{#role == null} = true or m.role = :role)
+                    and (lower(u.email) like :q or
                 lower(u.displayName) like :q)
     """)
     Page<MemberUserInfo> searchMembers(@Param("tenantId") UUID tenantId,
+                                       @Param("role") MembershipRole role,
                                        @Param("q") String q,
                                        Pageable pageable);
 
@@ -100,8 +120,12 @@ public interface TenantMembershipRepository extends
     select new com.example.multiapp.user.dto.MeTenantResponse(
         t.id, t.name, cast(m.role as string), m.isDefault
         ) from TenantMembership m join Tenant t on t.id = m.id.tenantId
-            where m.id.userId =: userId and m.isDefault = true
+            where m.id.userId = :userId and m.isDefault = true
     """)
     Optional<MeTenantResponse> findMyDefaultTenant(@Param("userId") UUID userId);
 
+    @Query("""
+    select m from TenantMembership m where m.id.userId = :userId and m.isDefault = true
+    """)
+    Optional<TenantMembership> findDefaultTenant(@Param("userId") UUID userId);
 }

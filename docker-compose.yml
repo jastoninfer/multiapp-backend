@@ -8,6 +8,11 @@ services:
       POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -19,6 +24,18 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${APP_DB}
       KC_DB_USERNAME: ${APP_DB_USER}
       KC_DB_PASSWORD: ${APP_DB_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000; printf \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"HTTP/1.1 200\" <&3'"
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 40s
 
 volumes:
   pgdata: {}
+  app_uploads: {}

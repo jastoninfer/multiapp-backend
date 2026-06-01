@@ -29,7 +29,6 @@ import java.util.UUID;
 
 public class AttachmentController {
     private final AttachmentService attachmentService;
-    private final RequestContextFilter requestContextFilter;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)

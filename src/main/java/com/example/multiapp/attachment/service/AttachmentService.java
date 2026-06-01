@@ -8,12 +8,15 @@ import com.example.multiapp.attachment.entity.AttachmentId;
 import com.example.multiapp.attachment.model.StorageProviderType;
 import com.example.multiapp.attachment.repo.AttachmentRepository;
 import com.example.multiapp.attachment.storage.AttachmentStorage;
+import com.example.multiapp.common.api.ForbiddenException;
 import com.example.multiapp.common.api.NotFoundException;
 import com.example.multiapp.common.api.PageNormalizer;
 import com.example.multiapp.common.api.PageResponse;
 import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.common.tenant.TenantContextInterceptor;
 import com.example.multiapp.ticket.auth.TicketAuthorizer;
+import com.example.multiapp.ticket.entity.Ticket;
+import com.example.multiapp.ticket.model.TicketStatus;
 import com.example.multiapp.ticket.repo.TicketRepository;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.validator.internal.xml.mapping.MappingXmlParser;
@@ -43,15 +46,21 @@ public class AttachmentService {
     private final TicketRepository ticketRepo;
     private final AttachmentStorage storage;
     private final TicketAuthorizer ticketAuth;
-    private final TenantContextInterceptor tenantContextInterceptor;
 
     @Transactional
     public AttachmentResponse uploadOne(RequestContext ctx, UUID ticketId, MultipartFile file)
         throws IOException {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(ticketId, "ticketId");
+        Ticket t = ticketRepo.findByIdTenantIdAndIdId(ctx.tenantId(), ticketId).orElseThrow(
+                () -> new NotFoundException("ticket not found")
+        );
+        if(t.getStatus() == TicketStatus.CLOSED) {
+            throw new ForbiddenException("ticket has been closed");
+        }
         validateFile(file);
-        ticketAuth.requireRead(ctx, ticketId);
+        ticketAuth.requireRead(ctx, ticketId, true);
+        // 不允许给CLOSED ticket上传附件, admin/agent/customer均不行
         Attachment attachment = Attachment.createFrom(ctx, ticketId, file, StorageProviderType.LOCAL);
         String key = storage.save(ctx.tenantId(), ticketId, attachment.getId().getId(), file);
         attachment.setStorageKey(key);
@@ -64,7 +73,7 @@ public class AttachmentService {
     public List<AttachmentSummary> listByTicket(RequestContext ctx, UUID ticketId, Pageable p) {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(ticketId, "ticketId");
-        ticketAuth.requireRead(ctx, ticketId);
+        ticketAuth.requireRead(ctx, ticketId, false);
         Pageable pageable = PageNormalizer.normalize(p, 25, 10, Sort.by(
                 Sort.Order.desc("createdAt"), Sort.Order.desc("id.id")),
                 Set.of("createdAt", "id.id", "filename", "contentType"));
@@ -78,7 +87,7 @@ public class AttachmentService {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(ticketId, "ticketId");
         Objects.requireNonNull(attachmentId, "attachmentId");
-        ticketAuth.requireRead(ctx, ticketId);
+        ticketAuth.requireRead(ctx, ticketId, false);
         Attachment a = attachmentRepo.findByIdTenantIdAndIdIdAndTicketId(ctx.tenantId(),
                 attachmentId, ticketId)
                 .orElseThrow(() -> new NotFoundException("Attachment: [%s] not found".formatted(attachmentId)));

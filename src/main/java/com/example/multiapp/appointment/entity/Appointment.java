@@ -71,7 +71,7 @@ public class Appointment extends AuditedEntity {
     @Column(name = "version", nullable = false)
     private long version;
 
-    private static Appointment create(
+    public static Appointment create(
             UUID tenantId, UUID ticketId, UUID resourceUserId, UUID customerUserId, UUID customerContactId,
             OffsetDateTime startAt, OffsetDateTime endAt, String addressText, String notes) {
         Objects.requireNonNull(tenantId, "tenantId");
@@ -101,6 +101,10 @@ public class Appointment extends AuditedEntity {
     public void reschedule(OffsetDateTime startAt, OffsetDateTime endAt) {
         Objects.requireNonNull(startAt, "startAt");
         Objects.requireNonNull(endAt, "endAt");
+        if(this.status != AppointmentStatus.BOOKED && this.status != AppointmentStatus.RESCHEDULED) {
+            throw new IllegalArgumentException("appointment is: [%s] cannot be rescheduled".formatted(
+                    this.status.name()));
+        }
 //        if(this.startAt.equals(startAt) && this.endAt.equals(endAt)) return;
         this.startAt = startAt;
         this.endAt = endAt;

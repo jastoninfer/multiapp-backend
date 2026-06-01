@@ -3,7 +3,7 @@ package com.example.multiapp.contact.auth;
 import com.example.multiapp.common.tenant.RequestContext;
 import com.example.multiapp.membership.model.MembershipRole;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import com.example.multiapp.common.api.ForbiddenException;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -15,7 +15,7 @@ public class ContactAuthorizerImpl implements ContactAuthorizer{
     public void requireCreate(RequestContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
         if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin|agent can add contact");
+            throw new ForbiddenException("only admin|agent can add contact");
         }
     }
 
@@ -23,7 +23,7 @@ public class ContactAuthorizerImpl implements ContactAuthorizer{
     public void requireList(RequestContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
         if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin|agent can list contacts");
+            throw new ForbiddenException("only admin|agent can list contacts");
         }
     }
 
@@ -31,7 +31,7 @@ public class ContactAuthorizerImpl implements ContactAuthorizer{
     public void requireRead(RequestContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
         if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin|agent can read contact details");
+            throw new ForbiddenException("only admin|agent can read contact details");
         }
     }
 
@@ -39,7 +39,7 @@ public class ContactAuthorizerImpl implements ContactAuthorizer{
     public void requireUpdate(RequestContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
         if(ctx.role() != MembershipRole.ADMIN && ctx.role() != MembershipRole.AGENT) {
-            throw new AccessDeniedException("only admin|agent can update a contact");
+            throw new ForbiddenException("only admin|agent can update a contact");
         }
     }
 }
