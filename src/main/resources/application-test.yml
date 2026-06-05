@@ -2,3 +2,7 @@ spring:
   flyway:
     schemas: app
     default-schema: app
+
+app:
+  upload:
+    dir: ${java.io.tmpdir}/multiapp-test-uploads
