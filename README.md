@@ -1,18 +1,23 @@
 # Multiapp Backend
 
-Spring Boot backend for a multi-tenant IT service management demo. The project models a SaaS workspace where tenants manage tickets, appointments, resources, external contacts, membership roles, audit events, and availability.
+[![Backend CI/CD](https://github.com/jastoninfer/multiapp-backend/actions/workflows/backend-ci-cd.yml/badge.svg)](https://github.com/jastoninfer/multiapp-backend/actions/workflows/backend-ci-cd.yml)
 
-This repository is the backend/API side of the demo. It is designed to run with PostgreSQL, Keycloak, and Caddy through Docker Compose.
+Spring Boot backend for **Multiapp**, a multi-tenant ticketing and appointment SaaS demo. The project is designed to show backend skills that are common in real business systems: authentication, tenant isolation, role-based access control, database migrations, audit logs, scheduling rules, and Docker deployment.
 
-## Highlights
+- Live demo: [https://multiapp-frontend.pages.dev](https://multiapp-frontend.pages.dev)
+- Frontend repository: [https://github.com/jastoninfer/multiapp-frontend](https://github.com/jastoninfer/multiapp-frontend)
 
-- Multi-tenant access model with `X-Tenant-Id` request scoping.
-- Keycloak/OIDC login with JWT resource-server validation.
-- Role-aware ticket workflow for customer users, agents, resource users, tenant admins, and platform admins.
-- Ticket lifecycle, comments, attachments, appointments, resource availability, contacts, tenant membership, and audit-log APIs.
-- ETag / `If-Match` support for state-changing operations where concurrent edits matter.
-- Demo seeding with realistic tenants, users, tickets, appointments, contacts, and availability data.
-- Docker Compose setup for local and server-based demo environments.
+## What This Backend Does
+
+- Uses Keycloak/OIDC for login and JWT validation.
+- Maps each request to a tenant with `X-Tenant-Id`.
+- Supports roles for platform admin, tenant admin, agent, resource user, and customer.
+- Provides APIs for tickets, comments, attachments, appointments, contacts, members, tenants, resources, availability, and audit logs.
+- Uses Flyway migrations with PostgreSQL.
+- Uses `Idempotency-Key` for create requests that should not be duplicated.
+- Uses ETag / `If-Match` for update requests where concurrent edits matter.
+- Records audit logs for important changes.
+- Runs with Docker Compose, PostgreSQL, Keycloak, the Spring Boot API, and Caddy.
 
 ## Stack
 
@@ -23,8 +28,9 @@ This repository is the backend/API side of the demo. It is designed to run with 
 - PostgreSQL 16
 - Flyway
 - Keycloak 26
-- Caddy
 - Docker / Docker Compose
+- Caddy
+- GitHub Actions
 
 ## Repository Layout
 
@@ -32,26 +38,115 @@ This repository is the backend/API side of the demo. It is designed to run with 
 src/main/java/com/example/multiapp
   appointment/       Appointment APIs and scheduling rules
   attachment/        Local attachment storage and download metadata
-  audit/             Read-only audit log API
+  audit/             Audit log API
   comment/           Ticket comment APIs
   contact/           External contact APIs
   contactclaim/      Claim-code flow for linking contacts to users
-  membership/        Tenant member list/detail/update/remove APIs
+  idempotency/       Idempotency records and response replay
+  membership/        Tenant member APIs
+  outbox/            Stored domain events
   resource/          Working hours and unavailable-time APIs
   tenant/            Tenant management APIs
   ticket/            Ticket workflow, authorization, and search
   user/              /me, tenant selection, and user access APIs
 ```
 
+## Main API Areas
+
+| Area | Purpose |
+| --- | --- |
+| `/me` | Current user profile and tenant memberships |
+| `/tickets` | Ticket search, create, detail, update, status changes, assignment |
+| `/tickets/{id}/comments` | Public and internal comments |
+| `/tickets/{id}/attachments` | Upload and protected download |
+| `/tickets/{id}/appointments` | Create appointment from a ticket |
+| `/appointments` | Appointment list, detail, and update |
+| `/resources` | Resource users, working hours, and unavailable time |
+| `/contacts` | External customer/contact records |
+| `/members` | Tenant member management |
+| `/tenant` | Tenant settings and platform tenant list |
+| `/audit-logs` | Tenant activity history |
+
+## Security And Tenant Model
+
+- Keycloak handles login and user credentials.
+- The backend validates JWTs and maps tokens to application users.
+- Tenant-specific APIs require `X-Tenant-Id`.
+- A user can have different roles in different tenants.
+- The frontend hides unavailable actions, but the backend still checks every protected action.
+
+## CI/CD
+
+CI/CD means the project is checked and deployed through a repeatable pipeline.
+
+For this backend:
+
+- **CI** runs on pull requests and pushes to `main`.
+- The pipeline runs Maven tests.
+- It builds a Docker image after tests pass.
+- **CD** runs only for `main`.
+- The deploy job connects to the VPS through GitHub Actions secrets, pulls the latest code, restarts the Docker Compose stack using the VPS-local runtime files, and checks the deployed API health endpoint.
+
+The workflow file is:
+
+```text
+.github/workflows/backend-ci-cd.yml
+```
+
+Required GitHub secrets:
+
+```text
+VPS_HOST
+VPS_PORT
+VPS_USER
+VPS_SSH_KEY
+VPS_APP_DIR
+```
+
+Required GitHub variable:
+
+```text
+BACKEND_HEALTH_URL
+```
+
+Private values are kept in GitHub secrets or repository variables, not in this README.
+
+## Runtime Configuration Files
+
+The repository keeps public templates for deployment shape:
+
+```text
+Caddyfile.example
+docker-compose.example.yml
+docker-compose.demo-prod.example.yml
+.env.demo-prod.example
+keycloak/import/multiapp-realm.template.json
+```
+
+The real runtime files are not committed:
+
+```text
+Caddyfile
+docker-compose.yml
+docker-compose.demo-prod.yml
+.env.demo-prod
+keycloak/import/multiapp-realm.json
+```
+
+This keeps server-specific values out of Git while still showing how the stack is meant to run. On a local machine or VPS, create the real files from the templates and fill in the actual values for that environment.
+
 ## Local Demo Run
 
-Create a local environment file from the example:
+Create local runtime files from the templates:
 
 ```bash
+cp Caddyfile.example Caddyfile
+cp docker-compose.example.yml docker-compose.yml
+cp docker-compose.demo-prod.example.yml docker-compose.demo-prod.yml
 cp .env.demo-prod.example .env.demo-prod
 ```
 
-Then start the local Docker stack:
+Start the stack:
 
 ```bash
 docker compose --env-file .env.demo-prod \
@@ -60,7 +155,7 @@ docker compose --env-file .env.demo-prod \
   up -d --build
 ```
 
-For the local Caddy setup, the expected browser-facing origins are:
+For the local Caddy setup, the browser-facing origins are:
 
 ```text
 http://app.localhost
@@ -74,27 +169,24 @@ Health check:
 curl http://api.localhost/actuator/health
 ```
 
-## Demo Accounts
+## Tests
 
-All demo accounts use the same password:
-
-```text
-Demo123!
+```bash
+./mvnw test
 ```
 
-| Workspace / tenant | Role | Accounts |
-| --- | --- | --- |
-| `__platform_admin` | Admin | `platform.admin@demo.com` (default)<br>`platform.ops@demo.com` (default) |
-| Acme Facilities | Admin | `platform.admin@demo.com`<br>`platform.ops@demo.com`<br>`tenant.admin@acme.demo` (default)<br>`acme.admin2@demo.com` (default) |
-| Acme Facilities | Agent | `agent@acme.demo` (default)<br>`acme.agent2@demo.com` (default)<br>`multi.member@demo.com` |
-| Acme Facilities | Resource user | `resource@acme.demo` (default)<br>`acme.resource2@demo.com` (default)<br>`acme.resource3@demo.com` (default) |
-| Acme Facilities | Customer | `customer@acme.demo` (default)<br>`acme.customer2@demo.com` (default)<br>`acme.customer3@demo.com` (default) |
-| Beta Clinic | Admin | `platform.admin@demo.com`<br>`platform.ops@demo.com`<br>`tenant.admin@acme.demo`<br>`beta.admin@demo.com` (default) |
-| Beta Clinic | Agent | `beta.agent@demo.com` (default)<br>`beta.agent2@demo.com` (default) |
-| Beta Clinic | Resource user | `beta.resource@demo.com` (default)<br>`beta.resource2@demo.com` (default) |
-| Beta Clinic | Customer | `multi.member@demo.com` (default)<br>`beta.customer@demo.com` (default) |
-| Suspended Tenant | Admin | `platform.admin@demo.com`<br>`platform.ops@demo.com` |
-| No workspace membership | Customer account | `guest.customer@demo.com` |
+The full test suite uses Testcontainers, so Docker must be running locally.
+
+## Demo Accounts
+
+All demo accounts use `Demo123!`.
+
+| Role | Account |
+| --- | --- |
+| Tenant admin | `tenant.admin@acme.demo` |
+| Agent | `agent@acme.demo` |
+| Resource user | `resource@acme.demo` |
+| Customer | `customer@acme.demo` |
 
 ## Keycloak Realm Template
 
@@ -104,41 +196,10 @@ The repository includes a sanitized Keycloak realm template:
 keycloak/import/multiapp-realm.template.json
 ```
 
-It preserves the demo realm structure, client settings, and stable demo user IDs used by the backend seeder. Generated signing keys, client secrets, and password hash material are omitted from the template.
-
-Runtime deployments provide the actual Keycloak import file at:
+Runtime deployments provide the actual realm import file:
 
 ```text
 keycloak/import/multiapp-realm.json
 ```
 
-Keeping stable user IDs allows `DemoDataSeeder` to align `app_user.keycloak_sub` values with Keycloak access-token `sub` claims.
-
-## Environment Notes
-
-Important environment variables:
-
-```env
-APP_ORIGIN=https://frontend.example.com
-APP_CORS_ALLOWED_ORIGINS=https://frontend.example.com
-KC_HOSTNAME=https://auth.example.com
-OIDC_ISSUER_URI=https://auth.example.com/realms/multiapp
-APP_UPLOAD_DIR=/data/uploads
-```
-
-The issuer URI must match the `iss` claim in Keycloak access tokens. In Docker, the backend must also be able to resolve the auth origin, usually through Caddy on the Compose network.
-
-## Tests
-
-```bash
-./mvnw test
-```
-
-## Deployment Shape
-
-The deployment model uses a small VPS-backed stack:
-
-- VPS: PostgreSQL, Keycloak, backend, Caddy
-- Static frontend hosting: Cloudflare Pages, Vercel, or similar
-- HTTPS: handled by Caddy for API/Auth origins
-- Persistent storage: PostgreSQL volume and `/data/uploads`
+The runtime import file is not meant to expose generated keys, client secrets, or password hash material.
