@@ -17,7 +17,10 @@ dist/
 # Local runtime deployment files. Keep only the public *.example templates in Git.
 /Caddyfile
 /docker-compose.yml
+/docker-compose.demo.yml
 /docker-compose.demo-prod.yml
+/docker-compose.dev.yml
+/docker-compose.prod.yml
 
 # Keep the public sanitized Keycloak template, never the real import/export.
 keycloak/import/multiapp-realm.json
