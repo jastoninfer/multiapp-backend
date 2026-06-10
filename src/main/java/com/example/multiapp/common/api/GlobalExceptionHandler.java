@@ -1,5 +1,6 @@
 package com.example.multiapp.common.api;
 
+import com.example.multiapp.common.web.IdempotencyConflictException;
 import jakarta.persistence.OptimisticLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -55,6 +56,12 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiError conflict(ConflictException ex) {
         return ApiError.of("CONFLICT", ex.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError idempotencyConflict(IdempotencyConflictException ex) {
+        return ApiError.of("IDEMPOTENCY_CONFLICT", ex.getMessage());
     }
 
     @ExceptionHandler(ForbiddenException.class)
