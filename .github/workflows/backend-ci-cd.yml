@@ -85,7 +85,7 @@ jobs:
           git fetch --prune origin
           git checkout main
           git pull --ff-only origin main
-          docker compose --env-file .env.demo-prod -f docker-compose.yml -f docker-compose.demo-prod.yml up -d --build
+          docker compose --env-file .env.demo-prod -f docker-compose.yml -f docker-compose.demo-prod.yml up -d --build --wait --wait-timeout 180
           docker compose --env-file .env.demo-prod -f docker-compose.yml -f docker-compose.demo-prod.yml ps
           EOF
 

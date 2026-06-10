@@ -34,6 +34,7 @@ services:
       APP_UPLOAD_DIR: ${APP_UPLOAD_DIR:-/data/uploads}
       APP_DEMO_SEED_ENABLED: ${APP_DEMO_SEED_ENABLED:-true}
       APP_DEMO_SEED_VERSION: ${APP_DEMO_SEED_VERSION:-v1}
+      APP_DEMO_SEED_FORCE: ${APP_DEMO_SEED_FORCE:-false}
       APP_PLATFORM_ADMIN_TENANT: ${APP_PLATFORM_ADMIN_TENANT:-__platform_admin}
     volumes:
 #      - 真实vps上应该使用
